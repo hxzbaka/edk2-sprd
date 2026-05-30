@@ -34,8 +34,8 @@
 
   gArmTokenSpaceGuid.PcdCpuVectorBaseAddress|0xBFC40000     # CPU Vectors
   gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz|26000000
-  gArmTokenSpaceGuid.PcdArmArchTimerSecIntrNum|30
-  gArmTokenSpaceGuid.PcdArmArchTimerIntrNum|29
+  gArmTokenSpaceGuid.PcdArmArchTimerSecIntrNum|29
+  gArmTokenSpaceGuid.PcdArmArchTimerIntrNum|30
   gArmTokenSpaceGuid.PcdGicDistributorBase|0x12001000
   gArmTokenSpaceGuid.PcdGicInterruptInterfaceBase|0x12002000
   gArmTokenSpaceGuid.PcdGicRedistributorsBase|0x0
