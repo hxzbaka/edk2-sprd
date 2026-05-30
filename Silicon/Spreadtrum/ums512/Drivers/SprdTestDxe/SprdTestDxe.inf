@@ -1,0 +1,35 @@
+[Defines]
+  INF_VERSION                    = 0x00010019
+  BASE_NAME                      = TimerGicDiagDxe
+  FILE_GUID                      = A3B2C1D4-5E6F-4A78-9B0C-1D2E3F4A5B6C
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = TimerGicDiagEntryPoint
+
+[Sources]
+  SprdTestDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DebugLib
+  IoLib
+  PcdLib
+  ArmLib
+  TimerLib
+  BaseMemoryLib
+
+[FixedPcd]
+  gArmTokenSpaceGuid.PcdGicDistributorBase
+  gArmTokenSpaceGuid.PcdGicInterruptInterfaceBase
+  gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz
+  gArmTokenSpaceGuid.PcdArmArchTimerIntrNum
+  gArmTokenSpaceGuid.PcdArmArchTimerSecIntrNum
+
+[Depex]
+  TRUE

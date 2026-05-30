@@ -1,0 +1,20 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = SprdUartSerialPortLib
+  FILE_GUID                      = 2F2CE92B-4FAD-4523-81CB-EBE778B9F6A8
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = SerialPortLib
+
+[Sources]
+  SprdUartSerialPortLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  IoLib
+
+[Pcd]
+  gSprdTokenSpaceGuid.PcdDebugUartPortBase
