@@ -1,0 +1,27 @@
+[Defines]
+  INF_VERSION    = 0x00010005
+  BASE_NAME      = SprdClockDxe
+  FILE_GUID      = 99DEAE4E-2DC3-4DFB-8139-743C326B1C7B
+  MODULE_TYPE    = DXE_DRIVER
+  ENTRY_POINT    = SprdClockDxeInitialize
+
+[Sources]
+  SprdClockDxe.c
+  SprdClock.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DebugLib
+  IoLib
+  BaseMemoryLib
+
+[Protocols]
+  gEfiClockProtocolGuid
+
+[Depex]
+  TRUE

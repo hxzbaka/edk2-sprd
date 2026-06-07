@@ -5,12 +5,19 @@ SprdClockInit (VOID)
 {
   UINT32 Val;
 
+  // Enable AHB gate for eMMC module
   Val = MmioRead32 (AP_AHB_GATE_BASE + AP_AHB_EMMC_EB_OFFSET);
   if (!(Val & AP_AHB_EMMC_EB_BIT)) {
     Val |= AP_AHB_EMMC_EB_BIT;
     MmioWrite32 (AP_AHB_GATE_BASE + AP_AHB_EMMC_EB_OFFSET, Val);
     MicroSecondDelay (1000);
   }
+
+  // Enable eMMC 2x and 1x clocks in AON gate
+  Val = MmioRead32 (AON_GATE_BASE + AON_GATE_EMMC_CLK_OFFSET);
+  Val |= AON_GATE_EMMC_2X_EN | AON_GATE_EMMC_1X_EN;
+  MmioWrite32 (AON_GATE_BASE + AON_GATE_EMMC_CLK_OFFSET, Val);
+  MicroSecondDelay (1000);
 
   return EFI_SUCCESS;
 }

@@ -13,8 +13,10 @@
 
 #  INF Platform/$(VENDOR_NAME)/ums512/$(PLATFORM_NAME)/Drivers/SprdButtonDxe/SprdButtonDxe.inf
 
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdHookDxe/SprdHookDxe.inf
+
 
 #
 # Emmc Driver
 #
-#  INF Silicon/Spreadtrum/ums512/Drivers/SprdEmmcDxe/SprdEmmcDxe.inf
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdEmmcDxe/SprdEmmcDxe.inf

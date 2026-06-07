@@ -58,7 +58,7 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdInstallAcpiSdtProtocol|TRUE
 
 [PcdsFixedAtBuild.common]
-  gArmPlatformTokenSpaceGuid.PcdCPUCoresStackBase|0xBFC00000
+  gArmPlatformTokenSpaceGuid.PcdCPUCoresStackBase|0x9FF90000
   gArmPlatformTokenSpaceGuid.PcdCPUCorePrimaryStackSize|0x20000
 
 !if $(LOW_RAM) == TRUE

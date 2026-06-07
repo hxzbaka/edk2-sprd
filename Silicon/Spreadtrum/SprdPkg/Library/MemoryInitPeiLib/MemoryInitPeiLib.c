@@ -99,15 +99,51 @@ MemoryPeim(IN EFI_PHYSICAL_ADDRESS UefiMemoryBase, IN UINT64 UefiMemorySize)
   CHAR8  *CmdLine = NULL;
   INT32  CmdLen = 0;
 
-  Fdt = GetFdt();
-  ASSERT(Fdt != NULL);
+Fdt = GetFdt();
 
-  while (fdt_get_memory(Fdt, (int)Node, (uint64_t*)&MemoryBase, (uint64_t*)&MemorySize)) {
+MemoryTotal = 0;
+Node = 0;
+
+if (Fdt == NULL) {
+  DEBUG((EFI_D_ERROR, "FDT is NULL, fallback to 4GB\n"));
+  MemoryTotal = 4ULL * SIZE_GB;
+} else {
+
+  while (fdt_get_memory(Fdt,
+                        (int)Node,
+                        (uint64_t*)&MemoryBase,
+                        (uint64_t*)&MemorySize)) {
+
+    /* 防止 DTB 写错/重叠导致爆炸 */
+    if (MemorySize == 0) {
+      Node++;
+      continue;
+    }
+
     MemoryTotal += MemorySize;
-    DEBUG((EFI_D_INFO, "FDT Memory %-2d: 0x%016llx - 0x%016llx (0x%016llx)\n",
-           Node, MemoryBase, MemoryBase + MemorySize, MemorySize));
+
+    DEBUG((EFI_D_INFO,
+      "FDT Memory %-2d: 0x%016llx - 0x%016llx (0x%016llx)\n",
+      Node,
+      MemoryBase,
+      MemoryBase + MemorySize,
+      MemorySize));
+
     Node++;
   }
+
+  /* DTB存在但没有 memory node */
+  if (MemoryTotal == 0) {
+    DEBUG((EFI_D_WARN, "FDT has no memory nodes, fallback to 4GB\n"));
+    MemoryTotal = 4ULL * SIZE_GB;
+  }
+
+  /* clamp：你的硬件就是4GB DDR */
+  if (MemoryTotal > (4ULL * SIZE_GB)) {
+    DEBUG((EFI_D_WARN, "FDT memory > 4GB, clamp to 4GB\n"));
+    MemoryTotal = 4ULL * SIZE_GB;
+  }
+}
 
   UINT64 MemoryTotalMB = MemoryTotal / SIZE_MB;
   if (MemoryTotalMB < 1024) {

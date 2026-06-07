@@ -14,7 +14,8 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/DebugLib.h>
 #include <Library/BaseMemoryLib.h>
-#include <Library/IoLib.h>
+#include <Protocol/EFIClock.h>
+#include <Protocol/SprdGpioProtocol.h>
 #include "SprdButtonDxe.h"
 
 
@@ -30,6 +31,8 @@ STATIC KEY_QUEUE mQueue;
 STATIC EFI_EVENT mWaitEvent;
 STATIC EFI_EVENT mTimerEvent;
 STATIC EFI_HANDLE mHandle = NULL;
+STATIC SPRD_GPIO_PROTOCOL *mGpio;
+STATIC EFI_CLOCK_PROTOCOL *ClockProtocol;
 
 
 #define PLAT_KEYPAD_DEVICE_GUID \
@@ -112,28 +115,7 @@ EnqueueKey (
   gBS->SignalEvent (mWaitEvent);
 }
 
-//
-// ADI read helper (unchanged)
-//
-STATIC
-UINT16
-AdiRead (
-  UINT32 Addr
-  )
-{
-  UINT32 Val;
 
-  MmioWrite32 (ADI_BASE + REG_ADI_RD_CMD, Addr);
-  do {
-    Val = MmioRead32 (ADI_BASE + REG_ADI_RD_DATA);
-  } while (Val & BIT_RD_BUSY);
-
-  return (UINT16)(Val & 0xFFFF);
-}
-
-//
-// Periodic timer callback: scan buttons, detect edges, handle auto-repeat
-//
 STATIC
 VOID
 EFIAPI
@@ -143,18 +125,42 @@ ScanTimerHandler (
   )
 {
   static BOOLEAN initialized = FALSE;
-  static BOOLEAN lastVolUp, lastVolDown, lastPower;
-  // Hold counters (number of 100ms ticks the button has been held)
-  static UINTN holdVolUp = 0, holdVolDown = 0, holdPower = 0;
-  // Repeat armed flag (true after first auto-repeat sent)
-  static BOOLEAN repeatVolUp = FALSE, repeatVolDown = FALSE, repeatPower = FALSE;
+  static BOOLEAN lastVolUp;
+  static BOOLEAN lastVolDown;
+  static BOOLEAN lastPower;
 
-  UINT32 ApEic   = MmioRead32 (AP_EIC_BASE);
-  UINT16 PmicEic = AdiRead (PMIC_EIC_BASE);
+  static UINTN holdVolUp   = 0;
+  static UINTN holdVolDown = 0;
+  static UINTN holdPower   = 0;
 
-  BOOLEAN volUp   = !!(PmicEic & (1 << 10));  // active high
-  BOOLEAN volDown = !(ApEic & (1 << 2));      // active low
-  BOOLEAN power   = !(PmicEic & (1 << 1));    // active low
+  static BOOLEAN repeatVolUp   = FALSE;
+  static BOOLEAN repeatVolDown = FALSE;
+  static BOOLEAN repeatPower   = FALSE;
+
+BOOLEAN volUp;
+BOOLEAN volDown;
+BOOLEAN power;
+
+if (mGpio == NULL) {
+  return;
+}
+
+volUp = mGpio->Get(GPIO_KEY_VOLUP);
+
+volDown = mGpio->Get(GPIO_KEY_VOLDOWN);
+
+power = mGpio->Get(GPIO_KEY_POWER);
+
+/*
+ * Sprd RT:
+ *
+ * VOL+   PMIC_EIC10 active high
+ * VOL-   AP_EIC2    active low
+ * POWER  PMIC_EIC1  active low
+ */
+
+volDown = !volDown;
+power   = !power;
 
   if (!initialized) {
     lastVolUp   = volUp;
@@ -275,16 +281,59 @@ SprdButtonDxeEntry (
   mWaitEvent  = NULL;
   mTimerEvent = NULL;
 
-  // Enable ADI/EIC clocks (same as your previous working code)
-//  MmioWrite32 (0x402E0000, 0xFFFFFFFF);
-//  MmioWrite32 (0x402E0010, 0xFFFFFFFF);
-//  MmioWrite32 (0x402E00B0, 0xFFFFFFFF);
 
-  // 1. Create WaitForKey event
+ Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID**)&ClockProtocol);
+  if (!EFI_ERROR (Status)) {
+    UINTN ClkId;
+Status = ClockProtocol->GetClockID(
+                           ClockProtocol,
+                           "eic",
+                           &ClkId
+                           );
+
+DEBUG((
+  DEBUG_ERROR,
+  "[BTN] GetClockID(eic)=%r id=%u\n",
+  Status,
+  (UINT32)ClkId
+  ));
+
+if (!EFI_ERROR(Status)) {
+  ClockProtocol->EnableClock(
+                   ClockProtocol,
+                   ClkId
+                   );
+}
+
+Status = ClockProtocol->GetClockID(
+                           ClockProtocol,
+                           "adi",
+                           &ClkId
+                           );
+
+DEBUG((
+  DEBUG_ERROR,
+  "[BTN] GetClockID(adi)=%r id=%u\n",
+  Status,
+  (UINT32)ClkId
+  ));
+
+if (!EFI_ERROR(Status)) {
+  ClockProtocol->EnableClock(
+                   ClockProtocol,
+                   ClkId
+                   );
+}
+    DEBUG ((DEBUG_ERROR, "[SprdButton] Clocks enabled via protocol\n"));
+  } else {
+    DEBUG ((DEBUG_ERROR, "[SprdButton] Clock protocol not found!\n"));
+  }
+
+
   Status = gBS->CreateEvent (
-                  0,                    // no special flags, just a simple event
+                  0,
                   TPL_NOTIFY,
-                  NULL,                 // no notify function needed
+                  NULL,
                   NULL,
                   &mWaitEvent
                   );
@@ -293,10 +342,31 @@ SprdButtonDxeEntry (
     return Status;
   }
 
-  // 2. Assign event to protocol instance
+// Gpio Load
+  Status = gBS->LocateProtocol (
+                &gSprdGpioProtocolGuid,
+                NULL,
+                (VOID **)&mGpio
+                );
+
+if (EFI_ERROR(Status)) {
+  DEBUG((
+    DEBUG_ERROR,
+    "[SprdButton] GPIO protocol not found %r\n",
+    Status
+    ));
+  return Status;
+}
+
+DEBUG((DEBUG_ERROR, "[SprdButton] GPIO protocol found\n"));
+
+DEBUG((DEBUG_ERROR, "[SprdButton] EIC Init\n"));
+mGpio->DirectionInput(GPIO_KEY_POWER);
+mGpio->DirectionInput(GPIO_KEY_VOLUP);
+mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
+
   mSimpleTextIn.WaitForKey = mWaitEvent;
 
-  // 3. Install all protocols on a new handle
   Status = gBS->InstallMultipleProtocolInterfaces (
                   &mHandle,
                   &gEfiSimpleTextInProtocolGuid,  &mSimpleTextIn,
@@ -309,12 +379,9 @@ SprdButtonDxeEntry (
     return Status;
   }
 
-  // 4. Optional: connect the handle so the console subsystem sees it.
-  //    If this triggers a crash, comment it out – the console might be
-  //    automatically detected by GuidConsoleIn.
+
   gBS->ConnectController (mHandle, NULL, NULL, TRUE);
 
-  // 5. Create periodic scan timer (100 ms)
   Status = gBS->CreateEvent (
                   EVT_TIMER | EVT_NOTIFY_SIGNAL,
                   TPL_CALLBACK,
@@ -330,7 +397,7 @@ SprdButtonDxeEntry (
   Status = gBS->SetTimer (
                   mTimerEvent,
                   TimerPeriodic,
-                  100000
+                  1000000
                   );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "[SprdButton] SetTimer failed: %r\n", Status));

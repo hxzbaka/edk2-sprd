@@ -1,0 +1,28 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = SprdGpioDxe
+  FILE_GUID                      = 8E0C7C7E-6A93-4B79-9A72-8E1B0D88B9A1
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdGpioEntryPoint
+
+[Sources]
+  SprdGpioDxe.c
+  SprdAdi.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  IoLib
+  BaseLib
+  DebugLib
+
+[Protocols]
+  gSprdGpioProtocolGuid
+
+[Depex]
+  TRUE

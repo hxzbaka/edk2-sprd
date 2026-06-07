@@ -11,15 +11,19 @@
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
 
-#define SDHCI_BASE                      0x20600000
-#define AP_CLK_BASE                     0x21500000
-#define AP_AHB_GATE_BASE                0x20E00000
+#define SDHCI_BASE                      0x71400000
+#define AP_AHB_GATE_BASE                0x71000000
+#define AON_GATE_BASE                   0x327D0000
 
 #define AP_CLK_EMMC_2X_CFG             0x90
 #define AP_AHB_EMMC_EB_OFFSET          0x00
-#define AP_AHB_EMMC_EB_BIT             BIT11
+#define AP_AHB_EMMC_EB_BIT             BIT25
 
-#define EMMC_BASE_RATE                  384000000
+#define AON_GATE_EMMC_CLK_OFFSET       0x13c
+#define AON_GATE_EMMC_2X_EN            BIT8
+#define AON_GATE_EMMC_1X_EN            BIT9
+
+#define EMMC_BASE_RATE                  390000000
 
 #define SDHCI_32BIT_BLK_CNT             0x00
 #define SDHCI_BLOCK_SIZE                0x04

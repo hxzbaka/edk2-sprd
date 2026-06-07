@@ -18,11 +18,12 @@
   UefiDriverEntryPoint
   UefiBootServicesTableLib
   DebugLib
-  IoLib
 
 [Protocols]
   gEfiSimpleTextInProtocolGuid
   gEfiDevicePathProtocolGuid
+  gEfiClockProtocolGuid
+  gSprdGpioProtocolGuid
 
 [Guids]
   gEfiConsoleInDeviceGuid

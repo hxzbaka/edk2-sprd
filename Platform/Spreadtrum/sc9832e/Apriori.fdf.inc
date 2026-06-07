@@ -22,6 +22,8 @@ APRIORI DXE {
   #
 
   INF Silicon/Spreadtrum/sc9832e/Drivers/SprdChipInfoDxe/SprdChipInfoDxe.inf
+  INF Silicon/Spreadtrum/sc9832e/Drivers/SprdClockDxe/SprdClockDxe.inf
+  INF Silicon/Spreadtrum/sc9832e/Drivers/SprdGpioDxe/SprdGpioDxe.inf
 
 
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf

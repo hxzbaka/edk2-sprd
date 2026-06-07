@@ -24,15 +24,9 @@
 
 [PcdsFixedAtBuild.common]
   gArmTokenSpaceGuid.PcdSystemMemoryBase|0x80000000         # Starting address
-!if $(LOW_RAM) == TRUE
-  gArmTokenSpaceGuid.PcdSystemMemorySize|0x40000000         # Limit to 1GB Size here
-  gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x10000000         # 256MB for low RAM (was 736MB)
-!else
   gArmTokenSpaceGuid.PcdSystemMemorySize|0xFDFA0000         # Limit to 4GB Size here
-  gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x2E000000         # Original 736MB
-!endif
 
-  gArmTokenSpaceGuid.PcdCpuVectorBaseAddress|0xBFC40000
+  gArmTokenSpaceGuid.PcdCpuVectorBaseAddress|0x9ff8c000
   gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz|26000000
   gArmTokenSpaceGuid.PcdArmArchTimerSecIntrNum|29
   gArmTokenSpaceGuid.PcdArmArchTimerIntrNum|30
@@ -40,16 +34,17 @@
   gArmTokenSpaceGuid.PcdGicRedistributorsBase|0x12040000
 
   gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiDefaultOemRevision|0x00000850
-  gEmbeddedTokenSpaceGuid.PcdPrePiStackBase|0xBFC00000      # UEFI Stack
+  gEmbeddedTokenSpaceGuid.PcdPrePiStackBase|0x9FF90000      # UEFI Stack
   gEmbeddedTokenSpaceGuid.PcdPrePiStackSize|0x00040000      # 256K stack
   gEmbeddedTokenSpaceGuid.PcdPrePiCpuIoSize|44
 
-  gSprdTokenSpaceGuid.PcdUefiMemPoolBase|0x90000000         # DXE Heap base address
+  gSprdTokenSpaceGuid.PcdUefiMemPoolBase|0xA0000000         # DXE Heap base address
+  gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x2E000000
   # PcdUefiMemPoolSize set conditionally above
   gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress|0x9E000000
 
   gArmPlatformTokenSpaceGuid.PcdCoreCount|8
-  gArmPlatformTokenSpaceGuid.PcdClusterCount|1
+  gArmPlatformTokenSpaceGuid.PcdClusterCount|2
 
   #
   # SimpleInit

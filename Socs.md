@@ -1,9 +1,9 @@
 # SoC adaptation status
 
-| SoC | Board | GIC/Timer | FB | EMMC/UFS | Acpi | Boot |
-| --- | --- | --- | --- | --- | --- | --- |
-| SC9832E | sp9832e_1h10 | √ | √ | √ | × | Linux |
-| UMS512 | ums512_1h10 | √ | √ | × | × | Linux |
+| SoC | Board | GIC/Timer | FB | EMMC/UFS | Acpi | GPIO | I2C | Boot |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SC9832E | sp9832e_1h10 | √ | √ | √ | × | √ | × |Linux |
+| UMS512 | ums512_1h10 | √ | √ | × | × | × | × |Linux |
 
 # Device adaptation
 
