@@ -36,3 +36,4 @@
   gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
   gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp
   gSprdTokenSpaceGuid.PcdMipiFrameBufferDelay
+

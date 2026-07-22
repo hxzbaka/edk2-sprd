@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2026 hxzbaka
  *
- * Physical button driver for Spreadtrum, providing SimpleTextIn via
+ * Physical button driver for Spreadtrum UMS512, providing SimpleTextIn via
  * hardware volume up/down and power keys.
  */
 
@@ -17,7 +17,6 @@
 #include <Protocol/EFIClock.h>
 #include <Protocol/SprdGpioProtocol.h>
 #include "SprdButtonDxe.h"
-
 
 #define KEY_QUEUE_SIZE 16
 
@@ -33,7 +32,6 @@ STATIC EFI_EVENT mTimerEvent;
 STATIC EFI_HANDLE mHandle = NULL;
 STATIC SPRD_GPIO_PROTOCOL *mGpio;
 STATIC EFI_CLOCK_PROTOCOL *ClockProtocol;
-
 
 #define PLAT_KEYPAD_DEVICE_GUID \
   {0xD7F58A0E, 0xBED2, 0x4B5A, {0xBB, 0x43, 0x8A, 0xB2, 0x3D, 0xD0, 0xE2, 0xB0}}
@@ -60,7 +58,6 @@ STATIC KEYPAD_DEVICE_PATH mDevicePath = {
     { sizeof(EFI_DEVICE_PATH_PROTOCOL), 0 }
   }
 };
-
 
 STATIC
 EFI_STATUS
@@ -96,7 +93,6 @@ STATIC EFI_SIMPLE_TEXT_INPUT_PROTOCOL mSimpleTextIn = {
   NULL
 };
 
-
 STATIC
 VOID
 EnqueueKey (
@@ -114,7 +110,6 @@ EnqueueKey (
   mQueue.Tail = Next;
   gBS->SignalEvent (mWaitEvent);
 }
-
 
 STATIC
 VOID
@@ -137,30 +132,27 @@ ScanTimerHandler (
   static BOOLEAN repeatVolDown = FALSE;
   static BOOLEAN repeatPower   = FALSE;
 
-BOOLEAN volUp;
-BOOLEAN volDown;
-BOOLEAN power;
+  BOOLEAN volUp;
+  BOOLEAN volDown;
+  BOOLEAN power;
 
-if (mGpio == NULL) {
-  return;
-}
+  if (mGpio == NULL) {
+    return;
+  }
 
-volUp = mGpio->Get(GPIO_KEY_VOLUP);
+  // Read raw GPIO states
+  volUp   = mGpio->Get (GPIO_KEY_VOLUP);
+  volDown = mGpio->Get (GPIO_KEY_VOLDOWN);
+  power   = mGpio->Get (GPIO_KEY_POWER);
 
-volDown = mGpio->Get(GPIO_KEY_VOLDOWN);
-
-power = mGpio->Get(GPIO_KEY_POWER);
-
-/*
- * Sprd RT:
- *
- * VOL+   PMIC_EIC10 active high
- * VOL-   AP_EIC2    active low
- * POWER  PMIC_EIC1  active low
- */
-
-volDown = !volDown;
-power   = !power;
+  /*
+   * Polarity adjustment per DTS:
+   *  - Vol+  : PMIC EIC4, active high -> no inversion
+   *  - Vol-  : AP GPIO124, active low  -> invert
+   *  - Power : PMIC EIC1, active low   -> invert
+   */
+  volDown = !volDown;
+  power   = !power;
 
   if (!initialized) {
     lastVolUp   = volUp;
@@ -173,7 +165,6 @@ power   = !power;
   // --- Volume Up (SCAN_UP) ---
   if (volUp) {
     if (!lastVolUp) {
-      // Just pressed: immediate key press
       EFI_INPUT_KEY Key = { SCAN_UP, 0 };
       EnqueueKey (&Key);
       DEBUG ((DEBUG_INFO, "[BTN] VOL+ pressed\n"));
@@ -182,13 +173,11 @@ power   = !power;
     } else {
       holdVolUp++;
       if (holdVolUp == 10) {
-        // Held for 1 second (10 * 100ms) -> start auto-repeat
         EFI_INPUT_KEY Key = { SCAN_UP, 0 };
         EnqueueKey (&Key);
         DEBUG ((DEBUG_INFO, "[BTN] VOL+ auto-repeat start\n"));
         repeatVolUp = TRUE;
       } else if (holdVolUp > 10 && repeatVolUp) {
-        // Continue repeating every 100ms
         EFI_INPUT_KEY Key = { SCAN_UP, 0 };
         EnqueueKey (&Key);
       }
@@ -262,9 +251,6 @@ power   = !power;
   lastPower   = power;
 }
 
-/**
-  Entry point: enable clocks, install protocols, start scan timer.
-**/
 EFI_STATUS
 EFIAPI
 SprdButtonDxeEntry (
@@ -276,95 +262,54 @@ SprdButtonDxeEntry (
 
   DEBUG ((DEBUG_ERROR, "[SprdButton] Starting\n"));
 
-  // Zero queue and events (defensive)
   ZeroMem (&mQueue, sizeof(mQueue));
   mWaitEvent  = NULL;
   mTimerEvent = NULL;
 
-
- Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID**)&ClockProtocol);
+  // Try to enable necessary clocks (ADI for PMIC, EIC for debounce)
+  Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID**)&ClockProtocol);
   if (!EFI_ERROR (Status)) {
     UINTN ClkId;
-Status = ClockProtocol->GetClockID(
-                           ClockProtocol,
-                           "eic",
-                           &ClkId
-                           );
 
-DEBUG((
-  DEBUG_ERROR,
-  "[BTN] GetClockID(eic)=%r id=%u\n",
-  Status,
-  (UINT32)ClkId
-  ));
+    Status = ClockProtocol->GetClockID (ClockProtocol, "adi", &ClkId);
+    if (!EFI_ERROR (Status)) {
+      ClockProtocol->EnableClock (ClockProtocol, ClkId);
+      DEBUG ((DEBUG_INFO, "[BTN] ADI clock enabled\n"));
+    } else {
+      DEBUG ((DEBUG_WARN, "[BTN] ADI clock not found\n"));
+    }
 
-if (!EFI_ERROR(Status)) {
-  ClockProtocol->EnableClock(
-                   ClockProtocol,
-                   ClkId
-                   );
-}
-
-Status = ClockProtocol->GetClockID(
-                           ClockProtocol,
-                           "adi",
-                           &ClkId
-                           );
-
-DEBUG((
-  DEBUG_ERROR,
-  "[BTN] GetClockID(adi)=%r id=%u\n",
-  Status,
-  (UINT32)ClkId
-  ));
-
-if (!EFI_ERROR(Status)) {
-  ClockProtocol->EnableClock(
-                   ClockProtocol,
-                   ClkId
-                   );
-}
-    DEBUG ((DEBUG_ERROR, "[SprdButton] Clocks enabled via protocol\n"));
+    Status = ClockProtocol->GetClockID (ClockProtocol, "eic_debounce", &ClkId);
+    if (!EFI_ERROR (Status)) {
+      ClockProtocol->EnableClock (ClockProtocol, ClkId);
+      DEBUG ((DEBUG_INFO, "[BTN] EIC debounce clock enabled\n"));
+    } else {
+      DEBUG ((DEBUG_WARN, "[BTN] EIC debounce clock not found\n"));
+    }
   } else {
-    DEBUG ((DEBUG_ERROR, "[SprdButton] Clock protocol not found!\n"));
+    DEBUG ((DEBUG_WARN, "[BTN] Clock protocol not found, assuming clocks already on\n"));
   }
 
-
-  Status = gBS->CreateEvent (
-                  0,
-                  TPL_NOTIFY,
-                  NULL,
-                  NULL,
-                  &mWaitEvent
-                  );
+  // Create wait event for SimpleTextIn
+  Status = gBS->CreateEvent (0, TPL_NOTIFY, NULL, NULL, &mWaitEvent);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "[SprdButton] CreateEvent(mWaitEvent) failed: %r\n", Status));
     return Status;
   }
 
-// Gpio Load
-  Status = gBS->LocateProtocol (
-                &gSprdGpioProtocolGuid,
-                NULL,
-                (VOID **)&mGpio
-                );
+  // Locate GPIO protocol
+  Status = gBS->LocateProtocol (&gSprdGpioProtocolGuid, NULL, (VOID **)&mGpio);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "[SprdButton] GPIO protocol not found: %r\n", Status));
+    return Status;
+  }
 
-if (EFI_ERROR(Status)) {
-  DEBUG((
-    DEBUG_ERROR,
-    "[SprdButton] GPIO protocol not found %r\n",
-    Status
-    ));
-  return Status;
-}
+  // Configure GPIO directions
+  mGpio->DirectionInput (GPIO_KEY_POWER);
+  mGpio->DirectionInput (GPIO_KEY_VOLUP);
+  mGpio->DirectionInput (GPIO_KEY_VOLDOWN);
 
-DEBUG((DEBUG_ERROR, "[SprdButton] GPIO protocol found\n"));
-
-DEBUG((DEBUG_ERROR, "[SprdButton] EIC Init\n"));
-mGpio->DirectionInput(GPIO_KEY_POWER);
-mGpio->DirectionInput(GPIO_KEY_VOLUP);
-mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
-
+  // Install SimpleTextIn and DevicePath
   mSimpleTextIn.WaitForKey = mWaitEvent;
 
   Status = gBS->InstallMultipleProtocolInterfaces (
@@ -379,9 +324,9 @@ mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
     return Status;
   }
 
-
   gBS->ConnectController (mHandle, NULL, NULL, TRUE);
 
+  // Create periodic timer for scanning keys (100ms)
   Status = gBS->CreateEvent (
                   EVT_TIMER | EVT_NOTIFY_SIGNAL,
                   TPL_CALLBACK,
@@ -394,11 +339,7 @@ mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
     return Status;
   }
 
-  Status = gBS->SetTimer (
-                  mTimerEvent,
-                  TimerPeriodic,
-                  1000000
-                  );
+  Status = gBS->SetTimer (mTimerEvent, TimerPeriodic, 1000000); // 100ms
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "[SprdButton] SetTimer failed: %r\n", Status));
     return Status;

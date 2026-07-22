@@ -9,222 +9,127 @@
 #include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
 
-STATIC EFI_EXIT_BOOT_SERVICES mOldExitBootServices;
-STATIC EFI_GET_MEMORY_MAP     mOldGetMemoryMap;
-STATIC EFI_IMAGE_LOAD      mOldLoadImage;
-STATIC EFI_IMAGE_START     mOldStartImage;
-STATIC EFI_ALLOCATE_POOL   mOldAllocatePool;
-STATIC EFI_ALLOCATE_PAGES  mOldAllocatePages;
+STATIC EFI_EXIT_BOOT_SERVICES  mOldExitBootServices;
+STATIC EFI_GET_MEMORY_MAP      mOldGetMemoryMap;
 
-STATIC UINTN mExitBootServicesCount = 0;
-STATIC UINTN mGetMemoryMapCount     = 0;
+STATIC UINTN mGetMemoryMapCount = 0;
+STATIC UINTN mExitBootCount     = 0;
 
-STATIC EFI_HANDLE_PROTOCOL mOldHandleProtocol;
+STATIC UINTN LastMapKey         = 0;
+STATIC UINTN LastMapSize        = 0;
+STATIC UINTN LastDescSize       = 0;
+STATIC UINT32 LastDescVersion   = 0;
+
+
+STATIC EFI_ALLOCATE_PAGES mOldAllocatePages;
+STATIC EFI_FREE_PAGES mOldFreePages;
+STATIC EFI_SET_MEM mOldSetMem;
+STATIC EFI_SET_VIRTUAL_ADDRESS_MAP mOldSetVirtualAddressMap;
 
 STATIC
 VOID
-DumpLoadedImage (
-  IN EFI_HANDLE ImageHandle
-  )
+DumpMemoryMap (
+    EFI_MEMORY_DESCRIPTOR *Map,
+    UINTN Size,
+    UINTN DescSize
+    )
 {
-  EFI_STATUS                Status;
-  EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
-  CHAR16                    *Path;
+    UINTN Count = Size / DescSize;
 
-  Status = gBS->HandleProtocol (
-                  ImageHandle,
-                  &gEfiLoadedImageProtocolGuid,
-                  (VOID **)&LoadedImage
-                  );
-
-  if (EFI_ERROR(Status)) {
     DEBUG((
-      EFI_D_ERROR,
-      "[SPRDHOOK] HandleProtocol LoadedImage failed %r\r\n",
-      Status
-      ));
-    return;
-  }
+        EFI_D_ERROR,
+        "[SPRDHOOK] MemoryMap Entries=%lu\n",
+        Count
+        ));
 
-  Path = ConvertDevicePathToText(
-           LoadedImage->FilePath,
-           TRUE,
-           TRUE
-           );
+    for (UINTN i = 0; i < Count; i++)
+    {
+        EFI_MEMORY_DESCRIPTOR *Desc =
+            (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + i * DescSize);
 
-  DEBUG((
-    EFI_D_ERROR,
-    "[SPRDHOOK] ImageBase=%p Size=0x%lx\r\n",
-    LoadedImage->ImageBase,
-    LoadedImage->ImageSize
-    ));
+        DEBUG((
+            EFI_D_ERROR,
+            "[%03lu] Type=%02u  Phys=%016lx  Pages=%08lx  Attr=%016lx\n",
+            i,
+            Desc->Type,
+            Desc->PhysicalStart,
+            Desc->NumberOfPages,
+            Desc->Attribute
+            ));
+    }
+}
 
-  if (Path != NULL) {
+
+EFI_STATUS
+EFIAPI
+SprdHookSetVirtualAddressMap (
+  UINTN MemoryMapSize,
+  UINTN DescriptorSize,
+  UINT32 DescriptorVersion,
+  EFI_MEMORY_DESCRIPTOR *VirtualMap
+  )
+{
     DEBUG((
-      EFI_D_ERROR,
-      "[SPRDHOOK] File=%s\r\n",
-      Path
-      ));
-    FreePool(Path);
-  }
+        EFI_D_ERROR,
+        "[SPRDHOOK] SetVirtualAddressMap\n"
+        "MapSize=%lx\n"
+        "DescSize=%lx\n",
+        MemoryMapSize,
+        DescriptorSize
+    ));
+
+    return mOldSetVirtualAddressMap(
+                MemoryMapSize,
+                DescriptorSize,
+                DescriptorVersion,
+                VirtualMap
+                );
 }
 
-EFI_STATUS
+
+VOID
 EFIAPI
-SprdHookLoadImage (
-  BOOLEAN                   BootPolicy,
-  EFI_HANDLE                ParentImageHandle,
-  EFI_DEVICE_PATH_PROTOCOL  *DevicePath,
-  VOID                      *SourceBuffer,
-  UINTN                     SourceSize,
-  EFI_HANDLE                *ImageHandle
+SprdHookSetMem (
+  VOID *Buffer,
+  UINTN Size,
+  UINT8 Value
   )
 {
-  EFI_STATUS Status;
-
-if (DevicePath != NULL) {
-  CHAR16 *PathText;
-
-  PathText = ConvertDevicePathToText(
-               DevicePath,
-               TRUE,
-               TRUE
-               );
-
-  if (PathText != NULL) {
-    DEBUG((
-      EFI_D_ERROR,
-      "[SPRDHOOK] LoadImage %s\r\n",
-      PathText
-      ));
-
-    FreePool(PathText);
-  }
-}
-
-  Status = mOldLoadImage (
-             BootPolicy,
-             ParentImageHandle,
-             DevicePath,
-             SourceBuffer,
-             SourceSize,
-             ImageHandle
-             );
-
-  DEBUG ((
-    EFI_D_ERROR,
-    "[SPRDHOOK] LoadImage -> %r Handle=%p\r\n",
-    Status,
-    ImageHandle ? *ImageHandle : NULL
-    ));
-
-  return Status;
-}
-
-
-EFI_STATUS
-EFIAPI
-SprdHookExitBootServices (
-  EFI_HANDLE ImageHandle,
-  UINTN      MapKey
-  )
-{
-  EFI_STATUS Status;
-
   DEBUG((
-    EFI_D_ERROR,
-    "\r\n"
-    "[SPRDHOOK] ==================================\r\n"
-    "[SPRDHOOK] ExitBootServices CALLED\r\n"
-    "[SPRDHOOK] MapKey=0x%lx\r\n",
-    MapKey
+    EFI_D_INFO,
+    "[SPRDHOOK] SetMem %p %lx %02x\n",
+    Buffer,
+    Size,
+    Value
     ));
 
-  DumpLoadedImage(ImageHandle);
-
-  Status = mOldExitBootServices(
-             ImageHandle,
-             MapKey
-             );
-
-  DEBUG((
-    EFI_D_ERROR,
-    "[SPRDHOOK] ExitBootServices Return=%r\r\n",
-    Status
-    ));
-
-  DEBUG((
-    EFI_D_ERROR,
-    "[SPRDHOOK] ==================================\r\n"
-    ));
-
-  return Status;
-}
-
-EFI_STATUS
-EFIAPI
-SprdHookStartImage (
-  EFI_HANDLE ImageHandle,
-  UINTN      *ExitDataSize,
-  CHAR16     **ExitData
-  )
-{
-  EFI_STATUS Status;
-
-  DEBUG((
-    EFI_D_ERROR,
-    "\r\n"
-    "[SPRDHOOK] ==================================\r\n"
-    "[SPRDHOOK] StartImage\r\n"
-    ));
-
-  DumpLoadedImage(ImageHandle);
-
-  Status = mOldStartImage (
-             ImageHandle,
-             ExitDataSize,
-             ExitData
-             );
-
-  DEBUG((
-    EFI_D_ERROR,
-    "[SPRDHOOK] StartImage Return=%r\r\n",
-    Status
-    ));
-
-  DEBUG((
-    EFI_D_ERROR,
-    "[SPRDHOOK] ==================================\r\n"
-    ));
-
-  return Status;
-}
-
-EFI_STATUS
-EFIAPI
-SprdHookAllocatePool (
-  EFI_MEMORY_TYPE PoolType,
-  UINTN           Size,
-  VOID            **Buffer
-  )
-{
-  EFI_STATUS Status;
-
-  Status = mOldAllocatePool (
-             PoolType,
-             Size,
-             Buffer
-             );
-
-  if (Size > 0x10000) {
-    DEBUG ((
-      EFI_D_ERROR,
-      "[SPRDHOOK] AllocatePool Size=0x%lx -> %r Buffer=%p\r\n",
+  mOldSetMem(
+      Buffer,
       Size,
-      Status,
-      Buffer ? *Buffer : NULL
-      ));
-  }
+      Value
+      );
+}
+
+EFI_STATUS
+EFIAPI
+SprdHookFreePages (
+  EFI_PHYSICAL_ADDRESS Memory,
+  UINTN Pages
+  )
+{
+  EFI_STATUS Status;
+
+  DEBUG((
+    EFI_D_ERROR,
+    "[SPRDHOOK] FreePages %lx %lu\n",
+    Memory,
+    Pages
+    ));
+
+  Status = mOldFreePages(
+             Memory,
+             Pages
+             );
 
   return Status;
 }
@@ -232,10 +137,10 @@ SprdHookAllocatePool (
 EFI_STATUS
 EFIAPI
 SprdHookAllocatePages (
-  EFI_ALLOCATE_TYPE     Type,
-  EFI_MEMORY_TYPE       MemoryType,
-  UINTN                 Pages,
-  EFI_PHYSICAL_ADDRESS  *Memory
+  IN EFI_ALLOCATE_TYPE      Type,
+  IN EFI_MEMORY_TYPE        MemoryType,
+  IN UINTN                  Pages,
+  IN OUT EFI_PHYSICAL_ADDRESS *Memory
   )
 {
   EFI_STATUS Status;
@@ -247,15 +152,102 @@ SprdHookAllocatePages (
              Memory
              );
 
-  DEBUG ((
+  DEBUG((
     EFI_D_ERROR,
-    "[SPRDHOOK] AllocatePages Pages=0x%lx -> %r Addr=0x%lx\r\n",
+    "[SPRDHOOK] AllocatePages "
+    "Type=%u "
+    "MemType=%u "
+    "Pages=%lu "
+    "Addr=%lx "
+    "%r\n",
+    Type,
+    MemoryType,
     Pages,
-    Status,
-    Memory ? *Memory : 0
+    Memory ? *Memory : 0,
+    Status
     ));
 
   return Status;
+}
+
+
+
+EFI_STATUS
+EFIAPI
+SprdHookExitBootServices (
+    EFI_HANDLE ImageHandle,
+    UINTN MapKey
+    )
+{
+    EFI_STATUS Status;
+
+    mExitBootCount++;
+
+    DEBUG((
+        EFI_D_ERROR,
+        "\r\n"
+        "[SPRDHOOK] ==================================\r\n"
+        "[SPRDHOOK] ExitBootServices #%u\r\n",
+        mExitBootCount
+        ));
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] Input MapKey : 0x%lx\r\n",
+        MapKey
+        ));
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] Last MapKey  : 0x%lx\r\n",
+        LastMapKey
+        ));
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] Last MapSize : 0x%lx\r\n",
+        LastMapSize
+        ));
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] Last DescSz  : 0x%lx\r\n",
+        LastDescSize
+        ));
+
+    if (MapKey != LastMapKey)
+    {
+        DEBUG((
+            EFI_D_ERROR,
+            "[SPRDHOOK] WARNING: MapKey mismatch!\r\n"
+            ));
+    }
+
+    Status = mOldExitBootServices(
+                ImageHandle,
+                MapKey
+                );
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] ExitBootServices -> %r\r\n",
+        Status
+        ));
+
+    if (Status == EFI_INVALID_PARAMETER)
+    {
+        DEBUG((
+            EFI_D_ERROR,
+            "[SPRDHOOK] INVALID_PARAMETER: Memory Map changed after GetMemoryMap!\r\n"
+            ));
+    }
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] ==================================\r\n"
+        ));
+
+    return Status;
 }
 
 
@@ -269,55 +261,106 @@ SprdHookGetMemoryMap (
   OUT UINT32                   *DescriptorVersion
   )
 {
-  EFI_STATUS Status;
+    EFI_STATUS Status;
 
-  Status = mOldGetMemoryMap (
-             MemoryMapSize,
-             MemoryMap,
-             MapKey,
-             DescriptorSize,
-             DescriptorVersion
-             );
+    Status = mOldGetMemoryMap (
+                MemoryMapSize,
+                MemoryMap,
+                MapKey,
+                DescriptorSize,
+                DescriptorVersion
+                );
 
-  mGetMemoryMapCount++;
+    mGetMemoryMapCount++;
 
-  DEBUG ((
-    EFI_D_ERROR,
-    "[SPRDHOOK] GetMemoryMap #%u Size=0x%lx Status=%r\r\n",
-    mGetMemoryMapCount,
-    *MemoryMapSize,
-    Status
-    ));
+    DEBUG((
+        EFI_D_ERROR,
+        "\r\n"
+        "[SPRDHOOK] ==================================\r\n"
+        "[SPRDHOOK] GetMemoryMap #%u\r\n"
+        "[SPRDHOOK] Status=%r\r\n",
+        mGetMemoryMapCount,
+        Status
+        ));
 
-  return Status;
-}
+    if (MemoryMapSize != NULL)
+    {
+        DEBUG((
+            EFI_D_ERROR,
+            "[SPRDHOOK] MapSize = 0x%lx\r\n",
+            *MemoryMapSize
+            ));
+    }
 
+    if (!EFI_ERROR(Status))
+    {
+        DEBUG((
+            EFI_D_ERROR,
+            "[SPRDHOOK] MapKey  = 0x%lx\r\n",
+            *MapKey
+            ));
 
-EFI_STATUS
-EFIAPI
-SprdHookHandleProtocol (
-  EFI_HANDLE Handle,
-  EFI_GUID   *Protocol,
-  VOID       **Interface
-  )
+        DEBUG((
+            EFI_D_ERROR,
+            "[SPRDHOOK] DescSize = 0x%lx\r\n",
+            *DescriptorSize
+            ));
+
+        DEBUG((
+            EFI_D_ERROR,
+            "[SPRDHOOK] DescVer  = %u\r\n",
+            *DescriptorVersion
+            ));
+
+        if (LastMapKey != 0)
+        {
+            if (LastMapKey != *MapKey)
+            {
+                DEBUG((
+                    EFI_D_ERROR,
+                    "[SPRDHOOK] MapKey CHANGED "
+                    "0x%lx -> 0x%lx\r\n",
+                    LastMapKey,
+                    *MapKey
+                    ));
+            }
+
+            if (LastMapSize != *MemoryMapSize)
+            {
+                DEBUG((
+                    EFI_D_ERROR,
+                    "[SPRDHOOK] MapSize CHANGED "
+                    "0x%lx -> 0x%lx\r\n",
+                    LastMapSize,
+                    *MemoryMapSize
+                    ));
+            }
+        }
+
+        LastMapKey       = *MapKey;
+        LastMapSize      = *MemoryMapSize;
+        LastDescSize     = *DescriptorSize;
+        LastDescVersion  = *DescriptorVersion;
+    }
+
+    DEBUG((
+        EFI_D_ERROR,
+        "[SPRDHOOK] ==================================\r\n"
+        ));
+
+if (!EFI_ERROR(Status) &&
+    MemoryMap != NULL)
 {
-  EFI_STATUS Status;
-
-  Status = mOldHandleProtocol(
-             Handle,
-             Protocol,
-             Interface
-             );
-
-  DEBUG((
-    EFI_D_ERROR,
-    "[SPRDHOOK] HandleProtocol %g -> %r\r\n",
-    Protocol,
-    Status
-    ));
-
-  return Status;
+    DumpMemoryMap(
+        MemoryMap,
+        *MemoryMapSize,
+        *DescriptorSize
+        );
 }
+
+    return Status;
+}
+
 
 EFI_STATUS
 EFIAPI
@@ -330,7 +373,7 @@ SprdHookDxeInitialize (
     EFI_D_ERROR,
     "\r\n"
     "[SPRDHOOK] ==================================\r\n"
-    "[SPRDHOOK] Sprd1HookDxe Loaded\r\n"
+    "[SPRDHOOK] SprdHookDxe Loaded\r\n"
     "[SPRDHOOK] BootServices=%p\r\n"
     "[SPRDHOOK] ExitBootServices=%p\r\n"
     "[SPRDHOOK] GetMemoryMap=%p\r\n"
@@ -339,19 +382,22 @@ SprdHookDxeInitialize (
 
   mOldExitBootServices = gBS->ExitBootServices;
   mOldGetMemoryMap     = gBS->GetMemoryMap;
-mOldLoadImage     = gBS->LoadImage;
-mOldStartImage    = gBS->StartImage;
-mOldAllocatePool  = gBS->AllocatePool;
-mOldAllocatePages = gBS->AllocatePages;
-mOldHandleProtocol = gBS->HandleProtocol;
-
   gBS->ExitBootServices = SprdHookExitBootServices;
   gBS->GetMemoryMap     = SprdHookGetMemoryMap;
-gBS->LoadImage     = SprdHookLoadImage;
-gBS->StartImage    = SprdHookStartImage;
-gBS->AllocatePool  = SprdHookAllocatePool;
+
+mOldAllocatePages = gBS->AllocatePages;
 gBS->AllocatePages = SprdHookAllocatePages;
-gBS->HandleProtocol = SprdHookHandleProtocol;
+
+mOldFreePages = gBS->FreePages;
+gBS->FreePages = SprdHookFreePages;
+
+mOldSetMem = gBS->SetMem;
+gBS->SetMem = SprdHookSetMem;
+
+mOldSetVirtualAddressMap = gST->RuntimeServices->SetVirtualAddressMap;
+
+gST->RuntimeServices->SetVirtualAddressMap =
+    SprdHookSetVirtualAddressMap;
 
   DEBUG ((
     EFI_D_ERROR,

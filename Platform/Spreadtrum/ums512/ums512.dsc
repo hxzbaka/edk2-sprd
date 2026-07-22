@@ -57,6 +57,8 @@
  #
   gSprdTokenSpaceGuid.PcdDebugUartPortBase|0x70100000
 
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp|32
+
 [LibraryClasses.common]
   # Ported from SurfaceDuoPkg
   AslUpdateLib|Silicon/Spreadtrum/SprdPkg/Library/DxeAslUpdateLib/DxeAslUpdateLib.inf

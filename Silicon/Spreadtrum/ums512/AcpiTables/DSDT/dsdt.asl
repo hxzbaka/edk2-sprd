@@ -1,12 +1,8 @@
-DefinitionBlock("DSDT.aml", "DSDT", 0x02, "QCOMM ", "SDM660 ", 3)
+DefinitionBlock("DSDT.aml", "DSDT", 0x02, "SPRDD ", "UMS512  ", 1)
 {
-    Scope(\_SB_) {
-
-		Include("addSub.asl")
-        
-        // Include("usb.asl")
-        
-        Include("dsdt_common.asl")
-
+    Scope (\_SB)
+    {
+        Include ("addSub.asl")
+        Include ("dsdt_common.asl")
     }
 }

@@ -29,6 +29,7 @@
   PcdLib
   FrameBufferBltLib
   CacheMaintenanceLib
+  IoLib
 
 [Protocols]
   gEfiGraphicsOutputProtocolGuid ## PRODUCES
@@ -47,5 +48,5 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdVideoVerticalResolution
 
 [Depex]
-  gEfiCpuArchProtocolGuid
+  gEfiCpuArchProtocolGuid AND gSprdDisplayReadyProtocolGuid
 

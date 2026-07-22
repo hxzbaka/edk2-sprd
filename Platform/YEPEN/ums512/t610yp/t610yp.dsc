@@ -23,3 +23,5 @@
   gRenegadePkgTokenSpaceGuid.PcdDeviceVendor|"Unisoc"
   gRenegadePkgTokenSpaceGuid.PcdDeviceProduct|"t610yp"
   gRenegadePkgTokenSpaceGuid.PcdDeviceCodeName|"M20201419"
+
+  gSprdTokenSpaceGuid.PcdMipiDisplayInitialized|TRUE

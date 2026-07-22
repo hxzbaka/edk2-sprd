@@ -1,3 +1,12 @@
+/**
+@file
+Sprd Emmc Drivers for UEFI
+SDC->sprd,sdhc-r10
+
+Copyright (c) 2026 kanadenadi
+hxzbaka
+**/
+
 #include <Library/CacheMaintenanceLib.h>
 #include <Protocol/DevicePath.h>
 #include "SprdEmmcDxe.h"
@@ -58,7 +67,12 @@ AdmaAllocResources (VOID)
 
   if (mBounceBuffer == NULL) {
     PhysAddr = 0xFFFFFFFF;
-    Status = gBS->AllocatePages (AllocateMaxAddress, EfiBootServicesData, 1, &PhysAddr);
+    Status = gBS->AllocatePages (
+             AllocateMaxAddress,
+             EfiBootServicesData,
+             EFI_SIZE_TO_PAGES(BOUNCE_SIZE),
+             &PhysAddr
+             );
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -187,6 +201,14 @@ EmmcSendDataCmdRaw (
     return Status;
   }
 
+UINT32 i;
+
+for (i = 0; i < ADMA2_MAX_DESC_COUNT; i++) {
+
+    if (!(mAdmaDescTable[i].Attr & ADMA2_ATTR_VALID))
+        break;
+}
+
   if (IsRead) {
     InvalidateDataCacheRange (Buf, XferSize);
   } else {
@@ -230,6 +252,7 @@ EmmcSendDataCmdRaw (
     if (IntSts & SDHCI_INT_XFER_COMPLETE) {
       MmioWrite32 (SDHCI_BASE + SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
       MmioWrite16 (SDHCI_BASE + SDHCI_TRANSFER_MODE, 0);
+
       if (IsRead) {
         InvalidateDataCacheRange (Buf, XferSize);
       }
@@ -466,7 +489,9 @@ EmmcDoTransfer (
   Done        = 0;
   CmdSingle   = IsRead ? 17 : 24;
   CmdMulti    = IsRead ? 18 : 25;
-  UseBounce   = (((UINTN)Buffer & (CACHE_LINE_SIZE - 1)) != 0);
+  UseBounce =
+    (((UINTN)Buffer & (CACHE_LINE_SIZE - 1)) != 0) ||
+    (BufferSize > 64 * 1024);
 
   while (Done < TotalBlocks) {
     Chunk = TotalBlocks - Done;

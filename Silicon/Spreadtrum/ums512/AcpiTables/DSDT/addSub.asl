@@ -1,1 +1,1 @@
-Name (PSUB, "MTP00660")
+Name (PSUB, "SPRDUSB0")

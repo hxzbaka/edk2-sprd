@@ -23,9 +23,11 @@
 [Protocols]
   gEfiSimpleTextInProtocolGuid
   gEfiDevicePathProtocolGuid
+  gEfiClockProtocolGuid
+  gSprdGpioProtocolGuid
 
 [Guids]
   gEfiConsoleInDeviceGuid
 
 [Depex]
-  TRUE
+  gSprdGpioProtocolGuid

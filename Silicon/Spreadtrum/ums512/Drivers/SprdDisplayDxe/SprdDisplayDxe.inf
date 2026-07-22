@@ -1,0 +1,35 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SprdDisplayDxe
+  FILE_GUID                      = EAF1B8B3-62AE-36EF-F107-36106BC8A6AE
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdDisplayDxeInitialize
+
+[Sources]
+  SprdDisplayDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  CacheMaintenanceLib
+  DebugLib
+  IoLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Pcd]
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
+  gSprdTokenSpaceGuid.PcdMipiDisplayInitialized
+
+[Guids]
+  gSprdDisplayReadyProtocolGuid
+
+[Depex]
+  TRUE

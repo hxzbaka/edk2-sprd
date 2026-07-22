@@ -1,736 +1,365 @@
+// UMS512 CPU topology + LPI: 6x Cortex-A55 (CL00) + 2x Cortex-A75 (CL01)
+
 Device (SYSM)
 {
-    Name (_HID, "ACPI0010" /* Processor Container Device */)  // _HID: Hardware ID
-    Name (_UID, 0x00100000)  // _UID: Unique ID
-    Device (APC0)
+    Name (_HID, "ACPI0010")   // System container
+    Name (_UID, 0x00)
+
+    // ---- Cluster 0: 6 x Cortex-A55 ----
+    Device (CL00)
     {
-        Name (_HID, "ACPI0010" /* Processor Container Device */)  // _HID: Hardware ID
-        Name (_UID, 0x0100)  // _UID: Unique ID
-        Name (_LPI, Package (0x06)  // _LPI: Low Power Idle States
+        Name (_HID, "ACPI0010")   // Cluster container
+        Name (_UID, 0x10)
+
+        // Cluster-level LPI (states that affect the entire cluster)
+        Name (_LPI, Package ()
         {
-            Zero, 
-            0x02000000, 
-            0x03, 
-            Package (0x0A)
+            0,                     // State index
+            0x01000000,            // Flags
+            2,                     // Number of states
+            Package ()
             {
-                0x0BB8, 
-                0x044C, 
-                One, 
-                Zero, 
-                Zero, 
-                Zero, 
-                0x0400, 
-                ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                "CCI.E3"
-            }, 
-
-            Package (0x0A)
+                300, 130, Zero, Zero, Zero, Zero, 0x20,
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                "L2_A55.D2d"
+            },
+            Package ()
             {
-                0x0DAC, 
-                0x047E, 
-                One, 
-                Zero, 
-                Zero, 
-                Zero, 
-                0x0500, 
-                ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                "CCI.E3+RPM"
-            }, 
-
-            Package (0x0A)
-            {
-                0x80E8, 
-                0x01F4, 
-                One, 
-                0x20, 
-                Zero, 
-                Zero, 
-                0x0300, 
-                ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                "platform.xo"
+                6400, 900, One, Zero, Zero, 0x03, 0x40,
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                "L2_A55.D4"
             }
         })
-        Device (CL0)
+
+        // ---- CPU0 (A55) ----
+        Device (CPU0)
         {
-            Name (_HID, "ACPI0010" /* Processor Container Device */)  // _HID: Hardware ID
-            Name (_UID, 0x10)  // _UID: Unique ID
-            Name (_LPI, Package (0x06)  // _LPI: Low Power Idle States
+            Name (_HID, "ACPI0007")
+            Name (_UID, 0)
+
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
+
+            Name (_LPI, Package ()
             {
-                Zero, 
-                0x01000000, 
-                0x03, 
-                Package (0x0A)
+                Zero, Zero, 3,
+                Package ()
                 {
-                    0x012C, 
-                    0x82, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    0x20, 
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                    "L2_Silver.D2d"
-                }, 
-
-                Package (0x0A)
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C1"     // WFI
+                },
+                Package ()
                 {
-                    0x015E, 
-                    0x96, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    0x30, 
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                    "L2_Silver.D2e"
-                }, 
-
-                Package (0x0A)
+                    400, 100, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C2d"    // Core power collapse
+                },
+                Package ()
                 {
-                    0x1900, 
-                    0x0384, 
-                    One, 
-                    Zero, 
-                    Zero, 
-                    0x03, 
-                    0x40, 
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                    "L2_Silver.D4"
+                    450, 300, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C3"     // Core + cluster power collapse
                 }
             })
-            Device (CPU0)
-            {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, Zero)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
-                {
-                    Return (0x0F)
-                }
-
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 3)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver0.C1"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x0190, 
-                        0x64, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver0.C2d"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver0.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver0.C3_NI"
-                    }
-                })
-            }
-
-            Device (CPU1)
-            {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, One)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
-                {
-                    Return (0x0F)
-                }
-
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver1.C1"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x0190, 
-                        0x64, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver1.C2d"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver1.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver1.C3_NI"
-                    }
-                })
-            }
-
-            Device (CPU2)
-            {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, 0x02)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
-                {
-                    Return (0x0F)
-                }
-
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver2.C1"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x0190, 
-                        0x64, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver2.C2d"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver2.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver2.C3_NI"
-                    }
-                })
-            }
-
-            Device (CPU3)
-            {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, 0x03)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
-                {
-                    Return (0x0F)
-                }
-
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver3.C1"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x0190, 
-                        0x64, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver3.C2d"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver3.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x01C2, 
-                        0x012C, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoSilver3.C3_NI"
-                    }
-                })
-            }
         }
 
-        Device (CL1)
+
+        Device (CPU1)
         {
-            Name (_HID, "ACPI0010" /* Processor Container Device */)  // _HID: Hardware ID
-            Name (_UID, 0x20)  // _UID: Unique ID
-            Name (_LPI, Package (0x06)  // _LPI: Low Power Idle States
+            Name (_HID, "ACPI0007")
+            Name (_UID, 1)
+
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
+
+            Name (_LPI, Package ()
             {
-                Zero, 
-                0x01000000, 
-                0x03, 
-                Package (0x0A)
+                Zero, Zero, 3,
+                Package ()
                 {
-                    0x0384, 
-                    0xC8, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    0x20, 
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                    "L2_Gold.D2d"
-                }, 
-
-                Package (0x0A)
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C1"     // WFI
+                },
+                Package ()
                 {
-                    0x03E8, 
-                    0x0190, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    Zero, 
-                    0x30, 
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                    "L2_Gold.D2e"
-                }, 
-
-                Package (0x0A)
+                    400, 100, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C2d"    // Core power collapse
+                },
+                Package ()
                 {
-                    0x1770, 
-                    0x04B0, 
-                    One, 
-                    Zero, 
-                    Zero, 
-                    0x03, 
-                    0x40, 
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                    ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                    "L2_Gold.D4"
+                    450, 300, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C3"     // Core + cluster power collapse
                 }
             })
-            Device (CPU4)
+        }
+
+        Device (CPU2)
+        {
+            Name (_HID, "ACPI0007")
+            Name (_UID, 2)
+
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
+
+            Name (_LPI, Package ()
             {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, 0x04)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
+                Zero, Zero, 3,
+                Package ()
                 {
-                    Return (0x0F)
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C1"     // WFI
+                },
+                Package ()
+                {
+                    400, 100, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C2d"    // Core power collapse
+                },
+                Package ()
+                {
+                    450, 300, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C3"     // Core + cluster power collapse
                 }
+            })
+        }
 
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold0.C1"
-                    }, 
+        Device (CPU3)
+        {
+            Name (_HID, "ACPI0007")
+            Name (_UID, 3)
 
-                    Package (0x0A)
-                    {
-                        0x0258, 
-                        0x50, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold0.C2d"
-                    }, 
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
 
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold0.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold0.C3_NI"
-                    }
-                })
-            }
-
-            Device (CPU5)
+            Name (_LPI, Package ()
             {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, 0x05)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
+                Zero, Zero, 3,
+                Package ()
                 {
-                    Return (0x0F)
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C1"     // WFI
+                },
+                Package ()
+                {
+                    400, 100, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C2d"    // Core power collapse
+                },
+                Package ()
+                {
+                    450, 300, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C3"     // Core + cluster power collapse
                 }
+            })
+        }
 
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold1.C1"
-                    }, 
+        Device (CPU4)
+        {
+            Name (_HID, "ACPI0007")
+            Name (_UID, 4)
 
-                    Package (0x0A)
-                    {
-                        0x0258, 
-                        0x50, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold1.C2d"
-                    }, 
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
 
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold1.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold1.C3_NI"
-                    }
-                })
-            }
-
-            Device (CPU6)
+            Name (_LPI, Package ()
             {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, 0x06)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
+                Zero, Zero, 3,
+                Package ()
                 {
-                    Return (0x0F)
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C1"     // WFI
+                },
+                Package ()
+                {
+                    400, 100, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C2d"    // Core power collapse
+                },
+                Package ()
+                {
+                    450, 300, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C3"     // Core + cluster power collapse
                 }
+            })
+        }
 
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold2.C1"
-                    }, 
+        Device (CPU5)
+        {
+            Name (_HID, "ACPI0007")
+            Name (_UID, 5)
 
-                    Package (0x0A)
-                    {
-                        0x0258, 
-                        0x50, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold2.C2d"
-                    }, 
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
 
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold2.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold2.C3_NI"
-                    }
-                })
-            }
-
-            Device (CPU7)
+            Name (_LPI, Package ()
             {
-                Name (_HID, "ACPI0007" /* Processor Device */)  // _HID: Hardware ID
-                Name (_UID, 0x07)  // _UID: Unique ID
-                Method (_STA, 0, NotSerialized)  // _STA: Status
+                Zero, Zero, 3,
+                Package ()
                 {
-                    Return (0x0F)
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C1"     // WFI
+                },
+                Package ()
+                {
+                    400, 100, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C2d"    // Core power collapse
+                },
+                Package ()
+                {
+                    450, 300, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A55.C3"     // Core + cluster power collapse
                 }
+            })
+        }
+    }
 
-                Name (_LPI, Package (0x07)  // _LPI: Low Power Idle States
-                {
-                    Zero, 
-                    Zero, 
-                    0x04, 
-                    Package (0x0A)
-                    {
-                        Zero, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x00000000FFFFFFFF, 4)}, // Register entry method <= WFI
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold3.C1"
-                    }, 
+    // ---- Cluster 1: 2 x Cortex-A75 ----
+    Device (CL01)
+    {
+        Name (_HID, "ACPI0010")
+        Name (_UID, 0x20)
 
-                    Package (0x0A)
-                    {
-                        0x0258, 
-                        0x50, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-                        Zero, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0, 0x0000000000000002, 3)}, // Register entry method 
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold3.C2d"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        One, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000003,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold3.C3"
-                    }, 
-
-                    Package (0x0A)
-                    {
-                        0x1B58, 
-                        0x5A, 
-                        Zero, 
-                        One, 
-                        Zero, 
-                        0x03, 
-						ResourceTemplate(){Register(FFixedHW, 0x20, 0,0x0000000040000004,3)}, // Core collapse.
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Residency counter register
-                        ResourceTemplate(){Register(SystemMemory,0,0,0,0)},	// Usage counter register
-                        "KryoGold3.C3_NI"
-                    }
-                })
+        // Cluster-level LPI for A75 cluster
+        Name (_LPI, Package ()
+        {
+            0,
+            0x01000000,
+            2,
+            Package ()
+            {
+                900, 200, Zero, Zero, Zero, Zero, 0x20,
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                "L2_A75.D2d"
+            },
+            Package ()
+            {
+                6000, 1200, One, Zero, Zero, 0x03, 0x40,
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                "L2_A75.D4"
             }
+        })
+
+        // ---- CPU6 (A75) ----
+        Device (CPU6)
+        {
+            Name (_HID, "ACPI0007")
+            Name (_UID, 6)
+
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
+
+            Name (_LPI, Package ()
+            {
+                Zero, Zero, 3,
+                Package ()
+                {
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A75.C1"
+                },
+                Package ()
+                {
+                    600, 80, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A75.C2d"
+                },
+                Package ()
+                {
+                    7000, 90, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A75.C3"
+                }
+            })
+        }
+
+        // CPU7 (A75)
+        Device (CPU7)
+        {
+            Name (_HID, "ACPI0007")
+            Name (_UID, 7)
+
+            Method (_STA, 0, NotSerialized) { Return (0x0F) }
+
+            Name (_LPI, Package ()
+            {
+                Zero, Zero, 3,
+                Package ()
+                {
+                    Zero, Zero, One, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0xFFFFFFFF, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A75.C1"
+                },
+                Package ()
+                {
+                    600, 80, Zero, Zero, Zero, Zero,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x00000002, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A75.C2d"
+                },
+                Package ()
+                {
+                    7000, 90, One, One, Zero, 0x03,
+                    ResourceTemplate () { Register (FFixedHW, 0x20, 0, 0x40000003, 3) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    ResourceTemplate () { Register (SystemMemory, 0, 0, 0, 0) },
+                    "UMS512.A75.C3"
+                }
+            })
         }
     }
 }

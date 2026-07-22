@@ -3,12 +3,10 @@
  *
  * Copyright (c) 2026 hxzbaka
  *
- * Gpio/Adi/PMIC driver for Spreadtrum Devices
- * SC2721/SC2720/SC2731/SC2723T
+ * Gpio/Adi/EIC/PMIC driver for Spreadtrum UMS512 (SharkL5Pro)
  */
 
 #include <Uefi.h>
-
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
 #include <Library/IoLib.h>
@@ -17,21 +15,44 @@
 #include "SprdAdi.h"
 #include <Protocol/SprdGpioProtocol.h>
 
-#define AP_GPIO_BASE        0x40280000
-#define AP_EIC_BASE         0x40210000
-
-#define PMIC_EIC_BASE       0x280
-
+/* AP GPIO */
+#define AP_GPIO_BASE        0x32070000
 #define GPIO_GROUP_NR       16
-#define EIC_GROUP_NR        8
-
 #define REG_DATA            0x00
 #define REG_DMSK            0x04
 #define REG_DIR             0x08
 #define REG_INEN            0x28
-
 #define GPIO_GROUP_OFFSET   0x80
 
+/* AP EIC */
+#define EIC_PER_BANK_NR     8
+#define EIC_BANK_NUM        4           /* sharkl5: 4 banks */
+#define EIC_DBNC_DATA       0x0
+#define EIC_DBNC_DMSK       0x4
+
+/* PMIC EIC */
+#define PMIC_EIC_BASE       0x280
+
+/* Virtual GPIO ranges */
+#define GPIO_AP_START       0x000
+#define GPIO_AP_END         0x0FF
+#define GPIO_EIC_START      0x120
+#define GPIO_EIC_END        0x13F
+#define GPIO_PMIC_EIC_START 0x140
+#define GPIO_PMIC_EIC_END   0x14F
+
+/*
+ * Debounce EIC bank base addresses (from DTS gpio@32000000).
+ * Order: bank0, bank1, bank2, bank3
+ */
+STATIC CONST UINT32 mEicBankBase[EIC_BANK_NUM] = {
+  0x32020000,
+  0x32030000,
+  0x32230000,
+  0x32270000
+};
+
+/* ---------- AP GPIO ---------- */
 STATIC
 UINT32
 ApGpioAddr (
@@ -39,13 +60,7 @@ ApGpioAddr (
   UINT32 Reg
   )
 {
-  UINT32 Group;
-
-  Group = Gpio / GPIO_GROUP_NR;
-
-  return AP_GPIO_BASE +
-         Group * GPIO_GROUP_OFFSET +
-         Reg;
+  return AP_GPIO_BASE + (Gpio / GPIO_GROUP_NR) * GPIO_GROUP_OFFSET + Reg;
 }
 
 STATIC
@@ -54,15 +69,8 @@ ApGpioRequest (
   UINT32 Gpio
   )
 {
-  UINT32 Bit;
-
-  Bit = 1U << (Gpio % GPIO_GROUP_NR);
-
-  MmioOr32 (
-    ApGpioAddr (Gpio, REG_DMSK),
-    Bit
-  );
-
+  UINT32 Bit = 1U << (Gpio % GPIO_GROUP_NR);
+  MmioOr32 (ApGpioAddr (Gpio, REG_DMSK), Bit);
   return EFI_SUCCESS;
 }
 
@@ -72,18 +80,9 @@ ApGpioGet (
   UINT32 Gpio
   )
 {
-  UINT32 GroupBit;
-  UINT32 Value;
-
   ApGpioRequest (Gpio);
-
-  GroupBit = Gpio % GPIO_GROUP_NR;
-
-  Value = MmioRead32 (
-            ApGpioAddr (Gpio, REG_DATA)
-          );
-
-  return (BOOLEAN)((Value >> GroupBit) & 1);
+  UINT32 Val = MmioRead32 (ApGpioAddr (Gpio, REG_DATA));
+  return (BOOLEAN)((Val >> (Gpio % GPIO_GROUP_NR)) & 1);
 }
 
 STATIC
@@ -93,56 +92,12 @@ ApGpioSet (
   BOOLEAN Level
   )
 {
-  UINT32 Bit;
-
-  Bit = 1U << (Gpio % GPIO_GROUP_NR);
-
+  UINT32 Bit = 1U << (Gpio % GPIO_GROUP_NR);
   if (Level) {
-    MmioOr32 (
-      ApGpioAddr (Gpio, REG_DATA),
-      Bit
-    );
+    MmioOr32 (ApGpioAddr (Gpio, REG_DATA), Bit);
   } else {
-    MmioAnd32 (
-      ApGpioAddr (Gpio, REG_DATA),
-      ~Bit
-    );
+    MmioAnd32 (ApGpioAddr (Gpio, REG_DATA), ~Bit);
   }
-
-  return EFI_SUCCESS;
-}
-
-STATIC
-UINT32
-ApEicAddr (
-  UINT32 Eic,
-  UINT32 Reg
-  )
-{
-  UINT32 Group;
-
-  Group = Eic / EIC_GROUP_NR;
-
-  return AP_EIC_BASE +
-         Group * GPIO_GROUP_OFFSET +
-         Reg;
-}
-
-STATIC
-EFI_STATUS
-ApEicRequest (
-  UINT32 Eic
-  )
-{
-  UINT32 Bit;
-
-  Bit = 1U << (Eic % EIC_GROUP_NR);
-
-  MmioOr32 (
-    ApEicAddr (Eic, REG_DMSK),
-    Bit
-  );
-
   return EFI_SUCCESS;
 }
 
@@ -152,22 +107,10 @@ ApGpioDirectionInput (
   UINT32 Gpio
   )
 {
-  UINT32 Bit;
-
+  UINT32 Bit = 1U << (Gpio % GPIO_GROUP_NR);
   ApGpioRequest (Gpio);
-
-  Bit = 1U << (Gpio % GPIO_GROUP_NR);
-
-  MmioAnd32 (
-    ApGpioAddr (Gpio, REG_DIR),
-    ~Bit
-  );
-
-  MmioOr32 (
-    ApGpioAddr (Gpio, REG_INEN),
-    Bit
-  );
-
+  MmioAnd32 (ApGpioAddr (Gpio, REG_DIR), ~Bit);
+  MmioOr32 (ApGpioAddr (Gpio, REG_INEN), Bit);
   return EFI_SUCCESS;
 }
 
@@ -178,64 +121,68 @@ ApGpioDirectionOutput (
   BOOLEAN Level
   )
 {
-  UINT32 Bit;
-
+  UINT32 Bit = 1U << (Gpio % GPIO_GROUP_NR);
   ApGpioRequest (Gpio);
-
-  Bit = 1U << (Gpio % GPIO_GROUP_NR);
-
   ApGpioSet (Gpio, Level);
-
-  MmioAnd32 (
-    ApGpioAddr (Gpio, REG_INEN),
-    ~Bit
-  );
-
-  MmioOr32 (
-    ApGpioAddr (Gpio, REG_DIR),
-    Bit
-  );
-
+  MmioAnd32 (ApGpioAddr (Gpio, REG_INEN), ~Bit);
+  MmioOr32 (ApGpioAddr (Gpio, REG_DIR), Bit);
   return EFI_SUCCESS;
 }
 
-//
-// AP EIC
-//
+/* ---------- AP EIC (Debounce) ---------- */
+STATIC
+UINT32
+ApEicAddr (
+  UINT32 EicId
+  )
+{
+  UINT32 Bank = EicId / EIC_PER_BANK_NR;
+  if (Bank >= EIC_BANK_NUM) {
+    return 0;
+  }
+  return mEicBankBase[Bank];
+}
 
 STATIC
 EFI_STATUS
-ApEicDirectionInput (
-  UINT32 Eic
+ApEicRequest (
+  UINT32 EicId
   )
 {
-  return ApEicRequest (Eic);
+  UINT32 Base = ApEicAddr (EicId);
+  if (Base == 0) {
+    return EFI_INVALID_PARAMETER;
+  }
+  UINT32 Bit = 1U << (EicId % EIC_PER_BANK_NR);
+  MmioOr32 (Base + EIC_DBNC_DMSK, Bit);
+  return EFI_SUCCESS;
 }
 
 STATIC
 BOOLEAN
 ApEicGet (
-  UINT32 Eic
+  UINT32 EicId
   )
 {
-  UINT32 GroupBit;
-  UINT32 Val;
-
-  GroupBit = Eic % EIC_GROUP_NR;
-
-  ApEicRequest (Eic);
-
-  Val = MmioRead32 (
-          ApEicAddr (Eic, REG_DATA)
-        );
-
-  return (BOOLEAN)((Val >> GroupBit) & 1);
+  UINT32 Base = ApEicAddr (EicId);
+  if (Base == 0) {
+    return FALSE;
+  }
+  ApEicRequest (EicId);
+  UINT32 Val = MmioRead32 (Base + EIC_DBNC_DATA);
+  return (BOOLEAN)((Val >> (EicId % EIC_PER_BANK_NR)) & 1);
 }
 
-//
-// PMIC EIC
-//
+STATIC
+EFI_STATUS
+ApEicDirectionInput (
+  UINT32 EicId
+  )
+{
+  return ApEicRequest (EicId);
+}
 
+/* ---------- PMIC EIC ---------- */
 STATIC
 EFI_STATUS
 PmicEicRequest (
@@ -247,16 +194,9 @@ PmicEicRequest (
   if (Eic >= 16) {
     return EFI_INVALID_PARAMETER;
   }
-
   Mask = AdiRead (PMIC_EIC_BASE + REG_DMSK);
-
   Mask |= (UINT16)(1U << Eic);
-
-  AdiWrite (
-    PMIC_EIC_BASE + REG_DMSK,
-    Mask
-  );
-
+  AdiWrite (PMIC_EIC_BASE + REG_DMSK, Mask);
   return EFI_SUCCESS;
 }
 
@@ -266,16 +206,11 @@ PmicEicGet (
   UINT32 Eic
   )
 {
-  UINT16 Data;
-
   if (Eic >= 16) {
     return FALSE;
   }
-
   PmicEicRequest (Eic);
-
-  Data = AdiRead (PMIC_EIC_BASE + REG_DATA);
-
+  UINT16 Data = AdiRead (PMIC_EIC_BASE + REG_DATA);
   return (BOOLEAN)((Data >> Eic) & 1);
 }
 
@@ -288,6 +223,7 @@ PmicEicDirectionInput (
   return PmicEicRequest (Eic);
 }
 
+/* ---------- Protocol Interfaces ---------- */
 STATIC
 EFI_STATUS
 EFIAPI
@@ -296,11 +232,10 @@ SprdSet (
   BOOLEAN Value
   )
 {
-  if (Gpio >= 0x100) {
-    return EFI_UNSUPPORTED;
+  if (Gpio >= GPIO_AP_START && Gpio <= GPIO_AP_END) {
+    return ApGpioSet (Gpio, Value);
   }
-
-  return ApGpioSet (Gpio, Value);
+  return EFI_UNSUPPORTED;
 }
 
 STATIC
@@ -310,20 +245,15 @@ SprdGet (
   UINT32 Gpio
   )
 {
-  if (Gpio < 0x100) {
+  if (Gpio >= GPIO_AP_START && Gpio <= GPIO_AP_END) {
     return ApGpioGet (Gpio);
   }
-
-  if (Gpio >= 0x120 &&
-      Gpio < 0x140) {
-    return ApEicGet (Gpio - 0x120);
+  if (Gpio >= GPIO_EIC_START && Gpio <= GPIO_EIC_END) {
+    return ApEicGet (Gpio - GPIO_EIC_START);
   }
-
-  if (Gpio >= 0x140 &&
-      Gpio < 0x150) {
-    return PmicEicGet (Gpio - 0x140);
+  if (Gpio >= GPIO_PMIC_EIC_START && Gpio <= GPIO_PMIC_EIC_END) {
+    return PmicEicGet (Gpio - GPIO_PMIC_EIC_START);
   }
-
   return FALSE;
 }
 
@@ -334,20 +264,15 @@ SprdDirectionInput (
   UINT32 Gpio
   )
 {
-  if (Gpio < 0x100) {
+  if (Gpio >= GPIO_AP_START && Gpio <= GPIO_AP_END) {
     return ApGpioDirectionInput (Gpio);
   }
-
-  if (Gpio >= 0x120 &&
-      Gpio < 0x140) {
-    return ApEicDirectionInput (Gpio - 0x120);
+  if (Gpio >= GPIO_EIC_START && Gpio <= GPIO_EIC_END) {
+    return ApEicDirectionInput (Gpio - GPIO_EIC_START);
   }
-
-  if (Gpio >= 0x140 &&
-      Gpio < 0x150) {
-    return PmicEicDirectionInput (Gpio - 0x140);
+  if (Gpio >= GPIO_PMIC_EIC_START && Gpio <= GPIO_PMIC_EIC_END) {
+    return PmicEicDirectionInput (Gpio - GPIO_PMIC_EIC_START);
   }
-
   return EFI_UNSUPPORTED;
 }
 
@@ -359,11 +284,10 @@ SprdDirectionOutput (
   BOOLEAN Value
   )
 {
-  if (Gpio >= 0x100) {
-    return EFI_INVALID_PARAMETER;
+  if (Gpio >= GPIO_AP_START && Gpio <= GPIO_AP_END) {
+    return ApGpioDirectionOutput (Gpio, Value);
   }
-
-  return ApGpioDirectionOutput (Gpio, Value);
+  return EFI_INVALID_PARAMETER;
 }
 
 STATIC SPRD_GPIO_PROTOCOL mSprdGpio = {
@@ -382,16 +306,14 @@ SprdGpioEntryPoint (
   )
 {
   EFI_HANDLE Handle = NULL;
+  EFI_STATUS Status;
 
-  return gBS->InstallProtocolInterface (
-                &Handle,
-                &gSprdGpioProtocolGuid,
-                EFI_NATIVE_INTERFACE,
-                &mSprdGpio
-              );
-
-  DEBUG ((
-    DEBUG_ERROR,
-    "[SprdGpioDxe] Load successful\n"
-  ));
+  Status = gBS->InstallProtocolInterface (
+                  &Handle,
+                  &gSprdGpioProtocolGuid,
+                  EFI_NATIVE_INTERFACE,
+                  &mSprdGpio
+                  );
+  DEBUG ((DEBUG_ERROR, "[SprdGpioDxe] Loaded (UMS512)\n"));
+  return Status;
 }

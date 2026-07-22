@@ -361,9 +361,9 @@ if (EFI_ERROR(Status)) {
 DEBUG((DEBUG_ERROR, "[SprdButton] GPIO protocol found\n"));
 
 DEBUG((DEBUG_ERROR, "[SprdButton] EIC Init\n"));
-mGpio->DirectionInput(GPIO_KEY_POWER);
-mGpio->DirectionInput(GPIO_KEY_VOLUP);
-mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
+  mGpio->DirectionInput(GPIO_KEY_POWER);
+  mGpio->DirectionInput(GPIO_KEY_VOLUP);
+  mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
 
   mSimpleTextIn.WaitForKey = mWaitEvent;
 

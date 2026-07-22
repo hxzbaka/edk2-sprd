@@ -20,7 +20,7 @@ APRIORI DXE {
   #
   # Spreadtrum Private Drivers
   #
-
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdDisplayDxe/SprdDisplayDxe.inf
   INF Silicon/Spreadtrum/ums512/Drivers/SprdChipInfoDxe/SprdChipInfoDxe.inf
 
 

@@ -3,37 +3,34 @@
 #include <Library/ArmLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/CacheMaintenanceLib.h>
-#include <Library/DebugLib.h>
 #include <Library/HobLib.h>
-#include <Library/IoLib.h>
-#include <Library/PcdLib.h>
 #include <Library/SerialPortLib.h>
-#include <Library/TimerLib.h>
 
+#include <Resources/FbColor.h>
 #include <Resources/font5x12.h>
 
 #include "Library/FrameBufferSerialPortLib.h"
+#include <Library/TimerLib.h>
 
-// ----- RGB565 Color Definitions -----
-#define RGB565_BLACK   0x0000
-#define RGB565_WHITE   0xFFFF
-#define RGB565_YELLOW  0xFFE0
 
 FBCON_POSITION m_Position;
 FBCON_POSITION m_MaxPosition;
 FBCON_COLOR    m_Color;
 BOOLEAN        m_Initialized = FALSE;
 
-UINTN gWidth  = FixedPcdGet32(PcdMipiFrameBufferWidth);
+UINTN gWidth = FixedPcdGet32(PcdMipiFrameBufferWidth);
+// Reserve half screen for output
 UINTN gHeight = FixedPcdGet32(PcdMipiFrameBufferHeight);
 UINTN gBpp    = FixedPcdGet32(PcdMipiFrameBufferPixelBpp);
-UINTN delay   = FixedPcdGet32(PcdMipiFrameBufferDelay);
+UINTN delay = FixedPcdGet32(PcdMipiFrameBufferDelay);
 
-// Internal helpers
+// Module-used internal routine
 void FbConPutCharWithFactor(char c, int type, unsigned scale_factor);
+
 void FbConDrawglyph(
     char *pixels, unsigned stride, unsigned bpp, unsigned *glyph,
     unsigned scale_factor);
+
 void FbConReset(void);
 void FbConScrollUp(void);
 void FbConFlush(void);
@@ -44,13 +41,18 @@ SerialPortInitialize(VOID)
 {
   UINTN InterruptState = 0;
 
+  // Prevent dup initialization
   if (m_Initialized)
     return RETURN_SUCCESS;
 
+  // Interrupt Disable
   InterruptState = ArmGetInterruptState();
   ArmDisableInterrupts();
 
+  // Reset console
   FbConReset();
+
+  // Set flag
   m_Initialized = TRUE;
 
   if (InterruptState)
@@ -58,31 +60,39 @@ SerialPortInitialize(VOID)
   return RETURN_SUCCESS;
 }
 
-// Clear the whole frame buffer to black
 void ResetFb(void)
 {
-  UINT16 *Pixel = (UINT16 *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress);
-  UINTN   Count = gWidth * gHeight;
+  // Clear current screen.
+  char *Pixels  = (void *)FixedPcdGet32(PcdMipiFrameBufferAddress);
+  UINTN BgColor = FB_BGRA8888_BLACK;
 
-  while (Count--) {
-    *Pixel++ = RGB565_BLACK;
+  // Set to black color.
+  for (UINTN i = 0; i < gWidth; i++) {
+    for (UINTN j = 0; j < gHeight; j++) {
+      BgColor = FB_BGRA8888_BLACK;
+      // Set pixel bit
+      for (UINTN p = 0; p < (gBpp / 8); p++) {
+        *Pixels = (unsigned char)BgColor;
+        BgColor = BgColor >> 8;
+        Pixels++;
+      }
+    }
   }
-
-  WriteBackInvalidateDataCacheRange(
-      (void *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress),
-      gWidth * gHeight * sizeof(UINT16));
 }
 
 void FbConReset(void)
 {
+  // Reset position.
   m_Position.x = 0;
   m_Position.y = 0;
 
+  // Calc max position.
   m_MaxPosition.x = gWidth / (FONT_WIDTH + 1);
   m_MaxPosition.y = (gHeight - 1) / FONT_HEIGHT;
 
-  m_Color.Foreground = RGB565_WHITE;
-  m_Color.Background = RGB565_BLACK;
+  // Reset color.
+  m_Color.Foreground = FB_BGRA8888_WHITE;
+  m_Color.Background = FB_BGRA8888_BLACK;
 }
 
 void FbConPutCharWithFactor(char c, int type, unsigned scale_factor)
@@ -93,21 +103,24 @@ void FbConPutCharWithFactor(char c, int type, unsigned scale_factor)
     return;
 
 paint:
+
   if ((unsigned char)c > 127)
     return;
 
   if ((unsigned char)c < 32) {
     if (c == '\n') {
       goto newline;
-    } else if (c == '\r') {
+    }
+    else if (c == '\r') {
       m_Position.x = 0;
       return;
-    } else {
+    }
+    else {
       return;
     }
   }
 
-  // Suppress leading spaces (except for special message types)
+  // Save some space
   if (m_Position.x == 0 && (unsigned char)c == ' ' &&
       type != FBCON_SUBTITLE_MSG && type != FBCON_TITLE_MSG)
     return;
@@ -115,12 +128,12 @@ paint:
   BOOLEAN intstate = ArmGetInterruptState();
   ArmDisableInterrupts();
 
-  Pixels = (char *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress);
-  Pixels += m_Position.y * (FONT_HEIGHT * gWidth * sizeof(UINT16));
-  Pixels += m_Position.x * scale_factor * ((FONT_WIDTH + 1) * sizeof(UINT16));
+  Pixels = (void *)FixedPcdGet32(PcdMipiFrameBufferAddress);
+  Pixels += m_Position.y * ((gBpp / 8) * FONT_HEIGHT * gWidth);
+  Pixels += m_Position.x * scale_factor * ((gBpp / 8) * (FONT_WIDTH + 1));
 
   FbConDrawglyph(
-      Pixels, gWidth, sizeof(UINT16), font5x12 + (c - 32) * 2, scale_factor);
+      Pixels, gWidth, (gBpp / 8), font5x12 + (c - 32) * 2, scale_factor);
 
   m_Position.x++;
 
@@ -132,110 +145,128 @@ paint:
   return;
 
 newline:
-  MicroSecondDelay(delay);
+  MicroSecondDelay( delay ); 
   m_Position.y += scale_factor;
   m_Position.x = 0;
-
   if (m_Position.y >= m_MaxPosition.y - scale_factor) {
-    // Scroll the screen
-    ResetFb();
     FbConFlush();
     m_Position.y = 0;
+
     if (intstate)
       ArmEnableInterrupts();
     goto paint;
-  } else {
-    // Clear the new line's background
-    Pixels = (char *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress);
-    Pixels += m_Position.y * (FONT_HEIGHT * gWidth * sizeof(UINT16));
-    ZeroMem(Pixels, (FONT_HEIGHT * gWidth * sizeof(UINT16)) * scale_factor);
+  }
+  else {
     FbConFlush();
     if (intstate)
       ArmEnableInterrupts();
   }
 }
 
-/*
- * Draw a single glyph into the pixel buffer.
- * Assumption: bpp == sizeof(UINT16) (RGB565)
- */
 void FbConDrawglyph(
     char *pixels, unsigned stride, unsigned bpp, unsigned *glyph,
     unsigned scale_factor)
 {
-  UINT16 *pixel_ptr = (UINT16 *)pixels;
-  UINT16  bg        = (UINT16)m_Color.Background;
-  UINT16  fg        = (UINT16)m_Color.Foreground;
+  char *       bg_pixels = pixels;
+  unsigned     x, y, i, j, k;
+  unsigned     data, temp;
+  unsigned int fg_color = m_Color.Foreground;
+  unsigned int bg_color = m_Color.Background;
+  stride -= FONT_WIDTH * scale_factor;
 
-  unsigned x, y, i, j;
-  unsigned data;
-
-  // Each character is FONT_HEIGHT tall, glyph[0] upper half, glyph[1] lower half.
-  // First, fill the entire glyph cell with background color.
-  for (y = 0; y < FONT_HEIGHT; y++) {
+  for (y = 0; y < FONT_HEIGHT / 2; ++y) {
     for (i = 0; i < scale_factor; i++) {
-      for (x = 0; x < FONT_WIDTH; x++) {
+      for (x = 0; x < FONT_WIDTH; ++x) {
         for (j = 0; j < scale_factor; j++) {
-          *pixel_ptr++ = bg;
+          bg_color = m_Color.Background;
+          for (k = 0; k < bpp; k++) {
+            *bg_pixels = (unsigned char)bg_color;
+            bg_color   = bg_color >> 8;
+            bg_pixels++;
+          }
         }
       }
-      // Move to next line: stride is display width, subtract drawn width
-      pixel_ptr += stride - (FONT_WIDTH * scale_factor);
+      bg_pixels += (stride * bpp);
     }
   }
 
-  // Reset pointer to beginning of cell
-  pixel_ptr = (UINT16 *)pixels;
+  for (y = 0; y < FONT_HEIGHT / 2; ++y) {
+    for (i = 0; i < scale_factor; i++) {
+      for (x = 0; x < FONT_WIDTH; ++x) {
+        for (j = 0; j < scale_factor; j++) {
+          bg_color = m_Color.Background;
+          for (k = 0; k < bpp; k++) {
+            *bg_pixels = (unsigned char)bg_color;
+            bg_color   = bg_color >> 8;
+            bg_pixels++;
+          }
+        }
+      }
+      bg_pixels += (stride * bpp);
+    }
+  }
 
-  // Draw upper half (glyph[0])
   data = glyph[0];
-  for (y = 0; y < FONT_HEIGHT / 2; y++) {
-    unsigned row_bits = data;
+  for (y = 0; y < FONT_HEIGHT / 2; ++y) {
+    temp = data;
     for (i = 0; i < scale_factor; i++) {
-      data = row_bits;
-      for (x = 0; x < FONT_WIDTH; x++) {
+      data = temp;
+      for (x = 0; x < FONT_WIDTH; ++x) {
         if (data & 1) {
           for (j = 0; j < scale_factor; j++) {
-            *pixel_ptr++ = fg;
+            fg_color = m_Color.Foreground;
+            for (k = 0; k < bpp; k++) {
+              *pixels  = (unsigned char)fg_color;
+              fg_color = fg_color >> 8;
+              pixels++;
+            }
           }
-        } else {
-          // Skip background pixels (already painted)
-          pixel_ptr += scale_factor;
+        }
+        else {
+          for (j = 0; j < scale_factor; j++) {
+            pixels = pixels + bpp;
+          }
         }
         data >>= 1;
       }
-      // Next scaled line
-      pixel_ptr += stride - (FONT_WIDTH * scale_factor);
+      pixels += (stride * bpp);
     }
   }
 
-  // Draw lower half (glyph[1])
   data = glyph[1];
-  for (y = 0; y < FONT_HEIGHT / 2; y++) {
-    unsigned row_bits = data;
+  for (y = 0; y < FONT_HEIGHT / 2; ++y) {
+    temp = data;
     for (i = 0; i < scale_factor; i++) {
-      data = row_bits;
-      for (x = 0; x < FONT_WIDTH; x++) {
+      data = temp;
+      for (x = 0; x < FONT_WIDTH; ++x) {
         if (data & 1) {
           for (j = 0; j < scale_factor; j++) {
-            *pixel_ptr++ = fg;
+            fg_color = m_Color.Foreground;
+            for (k = 0; k < bpp; k++) {
+              *pixels  = (unsigned char)fg_color;
+              fg_color = fg_color >> 8;
+              pixels++;
+            }
           }
-        } else {
-          pixel_ptr += scale_factor;
+        }
+        else {
+          for (j = 0; j < scale_factor; j++) {
+            pixels = pixels + bpp;
+          }
         }
         data >>= 1;
       }
-      pixel_ptr += stride - (FONT_WIDTH * scale_factor);
+      pixels += (stride * bpp);
     }
   }
 }
 
-/* Simple scroll up using 16-bit access */
+/* TODO: Take stride into account */
 void FbConScrollUp(void)
 {
-  UINT16 *dst   = (UINT16 *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress);
-  UINT16 *src   = dst + (gWidth * FONT_HEIGHT);
-  UINTN   count = gWidth * (gHeight - FONT_HEIGHT);
+  unsigned short *dst   = (void *)FixedPcdGet32(PcdMipiFrameBufferAddress);
+  unsigned short *src   = dst + (gWidth * FONT_HEIGHT);
+  unsigned        count = gWidth * (gHeight - FONT_HEIGHT);
 
   while (count--) {
     *dst++ = *src++;
@@ -243,7 +274,7 @@ void FbConScrollUp(void)
 
   count = gWidth * FONT_HEIGHT;
   while (count--) {
-    *dst++ = (UINT16)m_Color.Background;
+    *dst++ = m_Color.Background;
   }
 
   FbConFlush();
@@ -251,9 +282,16 @@ void FbConScrollUp(void)
 
 void FbConFlush(void)
 {
+  unsigned total_x, total_y;
+  unsigned bytes_per_bpp;
+
+  total_x       = gWidth;
+  total_y       = gHeight;
+  bytes_per_bpp = (gBpp / 8);
+
   WriteBackInvalidateDataCacheRange(
-      (void *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress),
-      gWidth * gHeight * sizeof(UINT16));
+      (void *)FixedPcdGet32(PcdMipiFrameBufferAddress),
+      (total_x * total_y * bytes_per_bpp));
 }
 
 UINTN
@@ -278,17 +316,17 @@ EFIAPI
 SerialPortWriteCritical(IN UINT8 *Buffer, IN UINTN NumberOfBytes)
 {
   UINT8 *CONST Final             = &Buffer[NumberOfBytes];
-  UINTN        PreviousForeground = m_Color.Foreground;
+  UINTN        CurrentForeground = m_Color.Foreground;
   UINTN        InterruptState    = ArmGetInterruptState();
 
   ArmDisableInterrupts();
-  m_Color.Foreground = RGB565_YELLOW;
+  m_Color.Foreground = FB_BGRA8888_YELLOW;
 
   while (Buffer < Final) {
     FbConPutCharWithFactor(*Buffer++, FBCON_COMMON_MSG, SCALE_FACTOR);
   }
 
-  m_Color.Foreground = PreviousForeground;
+  m_Color.Foreground = CurrentForeground;
 
   if (InterruptState)
     ArmEnableInterrupts();

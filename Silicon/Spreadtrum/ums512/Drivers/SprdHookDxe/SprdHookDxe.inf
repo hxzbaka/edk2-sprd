@@ -11,12 +11,25 @@
 
 [Packages]
   MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
 
 [LibraryClasses]
   UefiDriverEntryPoint
   UefiLib
   UefiBootServicesTableLib
   DebugLib
+  MemoryAllocationLib
+  DevicePathLib
+  BaseLib
+  BaseMemoryLib
+  PcdLib
+  UefiRuntimeServicesTableLib
+
+[FixedPcd]
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid
 
 [Depex]
   TRUE

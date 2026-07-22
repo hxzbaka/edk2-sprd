@@ -1,37 +1,27 @@
-Name (SOID, 0xffffffff)          // Holds the Chip Id
-Name (SIDS, "899800000000000")   // Holds the Chip ID translated to a string
-Name (SIDV, 0xffffffff)          // Holds the Chip Version as (major<<16)|(minor&0xffff)
-Name (SVMJ, 0xffff)              // Holds the major Chip Version
-Name (SVMI, 0xffff)              // Holds the minor Chip Version
-Name (SDFE, 0xffff)              // Holds the Chip Family enum
-Name (SFES, "899800000000000")   // Holds the Chip Family translated to a string
-Name (SIDM, 0xfffffffff)         // Holds the Modem Support bit field
-Name (SOSN, 0xaaaaaaaabbbbbbbb)  // Holds the Chip Serial Number
-Name (PLST, 0xffffffff)  		 // Holds the Device platform subtype
-Name (RMTB, 0xaaaaaaaa)
-Name (RMTX, 0xbbbbbbbb)
-Name (RFMB, 0xcccccccc)
-Name (RFMS, 0xdddddddd)
-Name (RFAB, 0xeeeeeeee)
-Name (RFAS, 0x77777777)
-Name (PRP0, 0x0)                // Holds the enable/disable flag for PCIe
-Name (WLEN, One)                // Holds the enable/disable flag for WLAN
-	
-//
-// Storage - EMMC 
-//
-// TODO: We need to repair some PEPs to repair some equipment
-Include("emmc.asl") 
+Name (SOID, 0x0000512)
+Name (SIDS, "UMS512")
+Name (SIDV, 0x00010000)
+Name (SVMJ, 0x0001)
+Name (SVMI, 0x0000)
+Name (SDFE, 0x0512)
+Name (SFES, "UMS512")
+Name (SIDM, Zero)
+Name (SOSN, Zero)
+Name (PLST, Zero)
+Name (WLEN, One)
 
-//
-// SPMI driver 
-//
-Include("spmi.asl")
-
-//
-// PMIC driver 
-//
-Include("pmic_core.asl")
-
-// copied from msm8998, need to check   
-Include("pep_lpi.asl")
+Include ("pep_lpi.asl")
+Include ("uart.asl")
+Include ("emmc.asl")
+Include ("sdio.asl")
+Include ("i2c.asl")
+Include ("spi.asl")
+Include ("usb.asl")
+Include ("pmic.asl")
+Include ("gpio.asl")
+Include ("regulator.asl")
+Include ("display.asl")
+Include ("audio.asl")
+Include ("sensor.asl")
+Include ("rtc.asl")
+Include ("power.asl")
