@@ -4,6 +4,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SC9832E | sp9832e_1h10 | √ | √ | √ | × | √ | × |Linux |
 | UMS512 | ums512_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
+| UWS6152 | ums512_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
 
 # Device adaptation
 
@@ -11,3 +12,4 @@
 | --- | --- | --- | --- | --- | --- |
 | RT | SPRD | SC9832E | LCD | √ | × |
 | t610yp | YEPEN | UMS512 | OLED/Video | √ | × |
+| s16b | XinTaiQi | UWS6152 | OLED/Command | √ | × |
