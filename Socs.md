@@ -4,7 +4,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SC9832E | sp9832e_1h10 | √ | √ | √ | × | √ | × |Linux |
 | UMS512 | ums512_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
-| UWS6152 | ums512_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
+| UWS6152 | uws6152_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
 
 # Device adaptation
 
