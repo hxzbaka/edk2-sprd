@@ -23,7 +23,7 @@
   *_GCC5_AARCH64_CC_FLAGS = -O1
   *_*_*_CC_FLAGS = -DDEFAULT_DARK -mtune=cortex-a53 -mcpu=cortex-a53 -fverbose-asm -funsigned-char -ffunction-sections -fdata-sections -fno-builtin -fno-common -Wno-unused-variable -fshort-wchar -fno-strict-aliasing -mlittle-endian -fno-short-enums -fno-asynchronous-unwind-tables -mcmodel=small -ffixed-x18 -mstrict-align -fstack-protector -Wno-unaligned-access -Wno-misleading-indentation
 
-  !if $(ENABLE_LINUX_UTILS) == 1
+  !if $(ENABLE_LINUX_UTILS) == "1"
     GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_LINUX_UTILS=1
   !endif
   
@@ -426,7 +426,9 @@
   MdeModulePkg/Universal/PrintDxe/PrintDxe.inf
   MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
   MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
+!ifndef USE_CUSTOM_CONSOLE
   MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+!endif
   MdeModulePkg/Universal/Console/TerminalDxe/TerminalDxe.inf
 
   MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
@@ -497,7 +499,9 @@
   Platform/RenegadePkg/Drivers/PlatformSmbiosDxe/PlatformSmbiosDxe.inf
 
   # Simple framebuffer
+!ifndef USE_CUSTOM_FBDXE
   Silicon/Spreadtrum/SprdPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
+!endif
 
   # ACPI
   # We use pre-built ACPI tables, so only core components are loaded

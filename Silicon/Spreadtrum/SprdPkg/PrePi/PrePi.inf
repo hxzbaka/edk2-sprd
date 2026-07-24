@@ -40,6 +40,7 @@
   ExtractGuidedSectionLib
   HobLib
   IoLib
+  TimerLib
   LzmaDecompressLib
   MemoryAllocationLib
   MemoryInitPeiLib
@@ -74,3 +75,12 @@
   gSprdTokenSpaceGuid.PcdUefiMemPoolSize
   gSimpleInitTokenSpaceGuid.PcdDeviceTreeStore
   gSprdTokenSpaceGuid.PcdLinuxUtilsCheckHallOnly
+  gSprdTokenSpaceGuid.PcdDisplayCmdMode
+  gSprdTokenSpaceGuid.PcdDpuBaseAddress
+  gSprdTokenSpaceGuid.PcdDpuCtrlReg
+  gSprdTokenSpaceGuid.PcdDpuIntClrReg
+  gSprdTokenSpaceGuid.PcdDpuIntDoneBit
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp

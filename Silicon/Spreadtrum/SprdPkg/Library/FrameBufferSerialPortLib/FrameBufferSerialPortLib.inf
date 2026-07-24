@@ -30,6 +30,13 @@
   CacheMaintenanceLib
   TimerLib
 
+[FixedPcd]
+  gSprdTokenSpaceGuid.PcdDisplayCmdMode
+  gSprdTokenSpaceGuid.PcdDpuBaseAddress
+  gSprdTokenSpaceGuid.PcdDpuCtrlReg
+  gSprdTokenSpaceGuid.PcdDpuIntClrReg
+  gSprdTokenSpaceGuid.PcdDpuIntDoneBit
+
 [Pcd]
   gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
   gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth

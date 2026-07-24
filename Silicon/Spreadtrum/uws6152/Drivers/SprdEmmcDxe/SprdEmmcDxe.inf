@@ -1,0 +1,33 @@
+[Defines]
+  INF_VERSION                    = 0x00010019
+  BASE_NAME                      = SprdEmmcDxe
+  FILE_GUID                      = 7A2F3E4B-8C1D-4F5E-9A0B-1C2D3E4F5A6B
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdEmmcDxeEntryPoint
+
+[Sources]
+  SprdEmmcDxe.h
+  SprdSdhci.c
+  SprdEmmcDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  BaseMemoryLib
+  IoLib
+  TimerLib
+  DebugLib
+  CacheMaintenanceLib
+
+[Protocols]
+  gEfiBlockIoProtocolGuid
+  gEfiDevicePathProtocolGuid
+
+[Depex]
+  TRUE
