@@ -1,0 +1,72 @@
+# SimpleFbDxe.inf: Implements Simple FrameBuffer in UEFI.
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SimpleFbDxe
+  FILE_GUID                      = 86f0543e-8ad6-4ac4-a7b1-4d06c19e6152
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.1
+  ENTRY_POINT                    = SimpleFbDxeInitialize
+
+[Sources.common]
+  SimpleFbDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+  ArmPkg/ArmPkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  ReportStatusCodeLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+  PcdLib
+  FrameBufferBltLib
+  CacheMaintenanceLib
+  IoLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid   ## PRODUCES
+  gEfiCpuArchProtocolGuid
+  gHardwareInterruptProtocolGuid
+  gSprdDisplayReadyProtocolGuid
+
+[FixedPcd]
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp
+  gSprdTokenSpaceGuid.PcdDisplayCmdMode
+  gSprdTokenSpaceGuid.PcdDisplayHFlip
+  gSprdTokenSpaceGuid.PcdDpuBaseAddress
+  gSprdTokenSpaceGuid.PcdDpuCtrlReg
+  gSprdTokenSpaceGuid.PcdDpuIntClrReg
+  gSprdTokenSpaceGuid.PcdDpuIntStsReg
+  gSprdTokenSpaceGuid.PcdDpuIntDoneBit
+  gSprdTokenSpaceGuid.PcdDpuDpiCtrlReg
+  gSprdTokenSpaceGuid.PcdDpuDpiCtrlTeEnableBit
+  gSprdTokenSpaceGuid.PcdDpuDpiCtrlTeExternalBit
+  gSprdTokenSpaceGuid.PcdDpuIntTeBit
+  gSprdTokenSpaceGuid.PcdDpuIntEnReg
+  gSprdTokenSpaceGuid.PcdDpuInterruptSource
+  gSprdTokenSpaceGuid.PcdReconfigureDisplay
+
+[Guids]
+  gEfiMdeModulePkgTokenSpaceGuid
+  gEfiEventExitBootServicesGuid
+
+[Pcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoHorizontalResolution
+  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoVerticalResolution
+
+[Depex]
+  gEfiCpuArchProtocolGuid AND
+  gHardwareInterruptProtocolGuid AND
+  gSprdDisplayReadyProtocolGuid

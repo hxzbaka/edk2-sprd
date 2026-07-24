@@ -1,0 +1,188 @@
+## @file
+#  UWS6152 (SharkL5) Flash Description File
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[FD.uws6152_UEFI]
+BaseAddress   = $(FD_BASE)|gArmTokenSpaceGuid.PcdFdBaseAddress
+Size          = $(FD_SIZE)|gArmTokenSpaceGuid.PcdFdSize
+ErasePolarity = 1
+
+BlockSize     = 0x00001000
+NumBlocks     = 0x1800
+
+0x00000000|0x01800000
+gArmTokenSpaceGuid.PcdFvBaseAddress|gArmTokenSpaceGuid.PcdFvSize
+FV = FVMAIN_COMPACT
+
+[FV.FvMain]
+BlockSize          = 0x40
+NumBlocks          = 0
+FvAlignment        = 8
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+
+# Apriori
+!include Platform/Spreadtrum/uws6152/Apriori.fdf.inc
+
+  INF MdeModulePkg/Core/Dxe/DxeMain.inf
+
+  #
+  # PI DXE Drivers producing Architectural Protocols (EFI Services)
+  #
+  INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
+  INF ArmPkg/Drivers/CpuDxe/CpuDxe.inf
+  INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
+  INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
+
+!if $(SECURE_BOOT_ENABLE) == TRUE
+!include ArmPlatformPkg/SecureBootDefaultKeys.fdf.inc
+  INF SecurityPkg/VariableAuthenticated/SecureBootConfigDxe/SecureBootConfigDxe.inf
+  INF SecurityPkg/EnrollFromDefaultKeysApp/EnrollFromDefaultKeysApp.inf
+  INF SecurityPkg/VariableAuthenticated/SecureBootDefaultKeysDxe/SecureBootDefaultKeysDxe.inf
+!endif
+
+  INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
+  INF EmbeddedPkg/EmbeddedMonotonicCounter/EmbeddedMonotonicCounter.inf
+  INF MdeModulePkg/Universal/ResetSystemRuntimeDxe/ResetSystemRuntimeDxe.inf
+  INF EmbeddedPkg/RealTimeClockRuntimeDxe/RealTimeClockRuntimeDxe.inf
+  INF MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf
+  INF MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf
+  INF EmbeddedPkg/MetronomeDxe/MetronomeDxe.inf
+
+  #
+  # Multiple Console IO support
+  #
+  INF EmbeddedPkg/SimpleTextInOutSerial/SimpleTextInOutSerial.inf
+  INF MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
+  INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
+  INF MdeModulePkg/Universal/Console/TerminalDxe/TerminalDxe.inf
+
+  INF ArmPkg/Drivers/ArmGic/ArmGicDxe.inf
+  INF ArmPkg/Drivers/TimerDxe/TimerDxe.inf
+
+  INF MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
+
+  # BSP drivers
+!include Platform/Spreadtrum/uws6152/dxe.fdf.inc
+
+  #
+  # USB Host Support
+  #
+  INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+  INF MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+  INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+
+  #
+  # FAT filesystem + GPT/MBR partitioning
+  #
+  INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
+  INF MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
+  INF FatPkg/EnhancedFatDxe/Fat.inf
+  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
+  INF MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf
+  INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
+
+  INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
+
+  #
+  # ACPI Support
+  #
+  INF MdeModulePkg/Universal/Acpi/AcpiTableDxe/AcpiTableDxe.inf
+  INF MdeModulePkg/Universal/Acpi/AcpiPlatformDxe/AcpiPlatformDxe.inf
+  INF MdeModulePkg/Universal/Acpi/BootGraphicsResourceTableDxe/BootGraphicsResourceTableDxe.inf
+
+  #
+  # FDT support
+  #
+  INF EmbeddedPkg/Drivers/DtPlatformDxe/DtPlatformDxe.inf
+
+  #
+  # SMBIOS Support
+  #
+  INF Platform/RenegadePkg/Drivers/PlatformSmbiosDxe/PlatformSmbiosDxe.inf
+  INF MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
+
+  #
+  # UEFI applications
+  #
+  INF ShellPkg/Application/Shell/Shell.inf
+!ifdef $(INCLUDE_TFTP_COMMAND)
+  INF ShellPkg/DynamicCommand/TftpDynamicCommand/TftpDynamicCommand.inf
+!endif #$(INCLUDE_TFTP_COMMAND)
+
+  INF GPLDrivers/Application/LinuxSimpleMassStorage/LinuxSimpleMassStorage.inf
+
+  #
+  # Bds
+  #
+  INF MdeModulePkg/Universal/PrintDxe/PrintDxe.inf
+  INF MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
+  INF MdeModulePkg/Universal/DisplayEngineDxe/DisplayEngineDxe.inf
+  INF MdeModulePkg/Universal/SetupBrowserDxe/SetupBrowserDxe.inf
+  INF MdeModulePkg/Universal/DriverHealthManagerDxe/DriverHealthManagerDxe.inf
+  INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
+  INF MdeModulePkg/Application/UiApp/UiApp.inf
+  INF Platform/RenegadePkg/Drivers/LogoDxe/LogoDxe.inf
+
+  #
+  # Windows kernel patcher
+  #
+  INF Platform/RenegadePkg/Drivers/KernelErrataPatcher/KernelErrataPatcher.inf
+
+  #
+  # Simple Init GUI
+  #
+  INF src/main/SimpleInitMain.inf
+
+  INF src/kernelfdt/KernelFdtDxe.inf
+
+!if $(AB_SLOTS_SUPPORT) == TRUE
+  INF GPLDrivers/Drivers/BootSlotDxe/BootSlotDxe.inf
+  INF GPLDrivers/Application/SwitchSlotsApp/SwitchSlotsApp.inf
+!endif
+
+# Device specific fdf
+!include $(DEVICE_DXE_FV_COMPONENTS)
+
+[FV.FVMAIN_COMPACT]
+FvAlignment        = 8
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+
+  INF Silicon/Spreadtrum/SprdPkg/PrePi/PrePi.inf
+
+  FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
+    SECTION GUIDED EE4E5898-3914-4259-9D6E-DC7BD79403CF PROCESSING_REQUIRED = TRUE {
+      SECTION FV_IMAGE = FVMAIN
+    }
+  }
+
+!include Silicon/Spreadtrum/SprdPkg/SprdCommonFdf.inc

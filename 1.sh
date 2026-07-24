@@ -1,1 +1,0 @@
-./build.sh --device t610yp --uart --release DEBUG

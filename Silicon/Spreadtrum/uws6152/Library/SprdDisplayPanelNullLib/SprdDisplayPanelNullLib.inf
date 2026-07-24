@@ -1,0 +1,14 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SprdDisplayPanelNullLib
+  FILE_GUID                      = A34DE7ED-8544-42E3-A2EB-E44C6E6565B8
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = SprdDisplayPanelLib
+
+[Sources]
+  SprdDisplayPanelNullLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec

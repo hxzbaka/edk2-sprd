@@ -8,6 +8,8 @@
 #include <Library/PrePiHobListPointerLib.h>
 #include <Library/CacheMaintenanceLib.h>
 #include <Library/PlatformPrePiLib.h>
+#include <Library/IoLib.h>
+#include <Library/TimerLib.h>
 
 #include <Ppi/GuidedSectionExtraction.h>
 
@@ -20,6 +22,27 @@ UINT64  mSystemMemoryEnd = FixedPcdGet64 (PcdSystemMemoryBase) +
                            FixedPcdGet64 (PcdSystemMemorySize) - 1;
 
 VOID EFIAPI ProcessLibraryConstructorList(VOID);
+
+// clear framebuffer and trigger DPU frame
+STATIC VOID
+ClearScreenEdpi(VOID)
+{
+  UINT32 DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
+  UINT32 FbAddr  = FixedPcdGet32(PcdMipiFrameBufferAddress);
+  UINT32 Width   = FixedPcdGet32(PcdMipiFrameBufferWidth);
+  UINT32 Height  = FixedPcdGet32(PcdMipiFrameBufferHeight);
+  UINT32 Bpp     = FixedPcdGet32(PcdMipiFrameBufferPixelBpp);
+  UINTN  Size    = (UINTN)Width * Height * (Bpp / 8);
+  UINTN  i;
+
+  for (i = 0; i < Size; i++)
+    ((UINT8 *)(UINTN)FbAddr)[i] = 0;
+  WriteBackInvalidateDataCacheRange((VOID *)(UINTN)FbAddr, Size);
+
+  MmioWrite32(DpuBase + FixedPcdGet32(PcdDpuIntClrReg), FixedPcdGet32(PcdDpuIntDoneBit));
+  MmioOr32(DpuBase + FixedPcdGet32(PcdDpuCtrlReg), BIT0);
+  MicroSecondDelay(50000);
+}
 
 VOID
 PrePiMain(
@@ -56,8 +79,8 @@ PrePiMain(
   ArmEnableBranchPrediction();
 
   // Declare UEFI region
-  MemoryBase     = FixedPcdGet32(PcdSystemMemoryBase);
-  MemorySize     = FixedPcdGet32(PcdSystemMemorySize);
+  MemoryBase     = FixedPcdGet64(PcdSystemMemoryBase);
+  MemorySize     = FixedPcdGet64(PcdSystemMemorySize);
   UefiMemoryBase = FixedPcdGet32(PcdUefiMemPoolBase);
   UefiMemorySize = FixedPcdGet32(PcdUefiMemPoolSize);
   StackBase      = (VOID *)(UefiMemoryBase + UefiMemorySize - StackSize);
@@ -78,6 +101,11 @@ PrePiMain(
   // Invalidate cache
   InvalidateDataCacheRange(
       (VOID *)(UINTN)PcdGet64(PcdFdBaseAddress), PcdGet32(PcdFdSize));
+
+  // clear screen and trigger DPU frame if command mode enabled
+  if (FixedPcdGetBool(PcdDisplayCmdMode)) {
+    ClearScreenEdpi();
+  }
 
   // Initialize MMU
   Status = MemoryPeim(UefiMemoryBase, UefiMemorySize);

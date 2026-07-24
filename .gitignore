@@ -15,3 +15,6 @@ ramdisk
 *.orig
 *.fd
 ramdisk.cpio.gz
+AGENTS.md
+magiskboot/
+tmp/
