@@ -23,7 +23,7 @@
   *_GCC5_AARCH64_CC_FLAGS = -O1
   *_*_*_CC_FLAGS = -DDEFAULT_DARK -mtune=cortex-a53 -mcpu=cortex-a53 -fverbose-asm -funsigned-char -ffunction-sections -fdata-sections -fno-builtin -fno-common -Wno-unused-variable -fshort-wchar -fno-strict-aliasing -mlittle-endian -fno-short-enums -fno-asynchronous-unwind-tables -mcmodel=small -ffixed-x18 -mstrict-align -fstack-protector -Wno-unaligned-access -Wno-misleading-indentation
 
-  !if $(ENABLE_LINUX_UTILS) == "1"
+  !if $(ENABLE_LINUX_UTILS) == 1
     GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_LINUX_UTILS=1
   !endif
   
