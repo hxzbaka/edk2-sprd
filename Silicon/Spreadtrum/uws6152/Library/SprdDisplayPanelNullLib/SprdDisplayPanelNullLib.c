@@ -1,3 +1,12 @@
+/** @file
+  Null implementation of Spreadtrum Display Panel Library.
+
+  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
 #include <Library/SprdDisplayPanelLib.h>
 
 EFI_STATUS

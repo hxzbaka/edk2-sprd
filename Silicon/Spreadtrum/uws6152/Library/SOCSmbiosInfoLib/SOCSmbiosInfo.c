@@ -1,3 +1,13 @@
+/** @file
+  SOC SMBIOS Information Library for UWS6152.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
 #include <Base.h>
 #include <Guid/SmBios.h>
 #include <IndustryStandard/SmBios.h>

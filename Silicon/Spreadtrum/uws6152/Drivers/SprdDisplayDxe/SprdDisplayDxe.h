@@ -1,3 +1,13 @@
+/** @file
+  Display driver type definitions and function declarations
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
 #ifndef SPRD_DISPLAY_DXE_H_
 #define SPRD_DISPLAY_DXE_H_
 

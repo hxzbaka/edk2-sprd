@@ -3,7 +3,9 @@
 
   Provides chip information, ACPI table patches, and CPU frequency control (stubbed).
 
-  Copyright (c) 2026, hxzbaka. All rights reserved.
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+
   SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 

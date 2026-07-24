@@ -1,3 +1,13 @@
+/** @file
+  Definitions for the Spreadtrum button driver.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
 #ifndef _SPRD_BUTTON_DXE_H_
 #define _SPRD_BUTTON_DXE_H_
 

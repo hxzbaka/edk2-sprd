@@ -1,4 +1,13 @@
-// SimpleFbDxe: Simple FrameBuffer
+/** @file
+  This File Implements Simple FrameBuffer in UEFI
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
 #include "Library/FrameBufferBltLib.h"
 #include <Guid/EventGroup.h>
 #include <Library/BaseLib.h>
