@@ -67,7 +67,12 @@ AdmaAllocResources (VOID)
 
   if (mBounceBuffer == NULL) {
     PhysAddr = 0xFFFFFFFF;
-    Status = gBS->AllocatePages (AllocateMaxAddress, EfiBootServicesData, 1, &PhysAddr);
+    Status = gBS->AllocatePages (
+               AllocateMaxAddress,
+               EfiBootServicesData,
+               EFI_SIZE_TO_PAGES (BOUNCE_SIZE),
+               &PhysAddr
+               );
     if (EFI_ERROR (Status)) {
       return Status;
     }
@@ -475,10 +480,21 @@ EmmcDoTransfer (
   Done        = 0;
   CmdSingle   = IsRead ? 17 : 24;
   CmdMulti    = IsRead ? 18 : 25;
-  UseBounce   = (((UINTN)Buffer & (CACHE_LINE_SIZE - 1)) != 0);
+  /*
+   * The Linux sdhcr10 driver DMA-maps scatter-gather buffers and supplies
+   * alignment fixups per segment.  This small UEFI driver has no DMA mapping
+   * layer, so always use our page-aligned contiguous bounce buffer rather
+   * than DMA directly into a caller-owned Boot Manager buffer.
+   */
+  UseBounce = TRUE;
 
   while (Done < TotalBlocks) {
     Chunk = TotalBlocks - Done;
+
+    /* Match the SharkLE kernel driver's max_req_size (512 KiB). */
+    if (Chunk > EMMC_MAX_XFER_BLOCKS) {
+      Chunk = EMMC_MAX_XFER_BLOCKS;
+    }
 
     if (UseBounce) {
       if (Chunk > BOUNCE_BUF_BLOCKS) {
@@ -504,10 +520,6 @@ EmmcDoTransfer (
         CopyMem (Ptr, mBounceBuffer, (UINTN)Chunk * EMMC_BLOCK_SIZE);
       }
     } else {
-      if (Chunk > EMMC_MAX_XFER_BLOCKS) {
-        Chunk = EMMC_MAX_XFER_BLOCKS;
-      }
-
       Status = EmmcSendDataCmd (
                  (Chunk > 1) ? CmdMulti : CmdSingle,
                  (UINT32)(Lba + Done),

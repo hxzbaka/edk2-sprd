@@ -7,7 +7,7 @@
 // 时钟域基地址
 //
 #define AON_CLK_BASE     0x402E0000
-#define AP_AHB_CLK_BASE  0x20E0000
+#define AP_AHB_CLK_BASE  0x20E00000
 #define AP_APB_CLK_BASE  0x71300000
 
 //

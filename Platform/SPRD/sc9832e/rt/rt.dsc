@@ -14,11 +14,13 @@
 !include Platform/Spreadtrum/sc9832e/sc9832e.dsc
 
 [BuildOptions.common]
-  GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_SIMPLE_INIT -DLOW_RAM
+  GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_SIMPLE_INIT
 
 [PcdsFixedAtBuild.common]
-  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth|720
-  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight|1560
+  # RT panel scanout exposed by SimpleFbDxe as BGRA8888 / 32 bpp.
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth|480
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight|960
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp|32
 
   gRenegadePkgTokenSpaceGuid.PcdDeviceVendor|"SPRD"
   gRenegadePkgTokenSpaceGuid.PcdDeviceProduct|"RT"

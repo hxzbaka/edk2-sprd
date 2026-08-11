@@ -23,32 +23,32 @@
 #define REG_DIR               0x08
 #define REG_INEN              0x28
 
-/* ---------- Debounce EIC (4 banks, 8 pins each) ---------- */
-#define EIC_DEB_BANK_NR       4
+/* ---------- SC9832E/SharkLE AP EIC (3 banks, 8 pins each) ---------- */
+#define EIC_DEB_BANK_NR       3
 #define EIC_DEB_PINS_PER_BANK 8
 
 STATIC CONST UINT32 EicDebBase[EIC_DEB_BANK_NR] = {
-  0x32020000, 0x32030000, 0x32230000, 0x32270000
+  0x40210000, 0x40370000, 0x402C0000
 };
 #define EIC_DEB_DATA          0x00
 #define EIC_DEB_DMSK          0x04
 
 /* ---------- Latch EIC ---------- */
 STATIC CONST UINT32 EicLatchBase[EIC_DEB_BANK_NR] = {
-  0x32020080, 0x32030080, 0x32230080, 0x32270080
+  0x40210080, 0x40370080, 0x402C0080
 };
 /* No data register for Latch, only interrupt registers.
  * Not supporting Get(). */
 
 /* ---------- Async EIC ---------- */
 STATIC CONST UINT32 EicAsyncBase[EIC_DEB_BANK_NR] = {
-  0x320200A0, 0x320300A0, 0x322300A0, 0x322700A0
+  0x402100A0, 0x403700A0, 0x402C00A0
 };
 #define EIC_ASYNC_DATA        0x1C
 
 /* ---------- Sync EIC ---------- */
 STATIC CONST UINT32 EicSyncBase[EIC_DEB_BANK_NR] = {
-  0x320200C0, 0x320300C0, 0x322300C0, 0x322700C0
+  0x402100C0, 0x403700C0, 0x402C00C0
 };
 #define EIC_SYNC_DATA         0x1C
 

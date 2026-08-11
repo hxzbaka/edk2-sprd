@@ -2,7 +2,8 @@
 
 #include <Library/IoLib.h>
 
-#define ADI_BASE            0x32100000
+/* SC9832E/SharkLE ADI controller: DTS spi@40380000. */
+#define ADI_BASE            0x40380000
 
 #define REG_ADI_RD_CMD      0x28
 #define REG_ADI_RD_DATA     0x2C

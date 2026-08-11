@@ -140,6 +140,7 @@ ScanTimerHandler (
 BOOLEAN volUp;
 BOOLEAN volDown;
 BOOLEAN power;
+BOOLEAN volumeKey;
 
 if (mGpio == NULL) {
   return;
@@ -161,6 +162,11 @@ power = mGpio->Get(GPIO_KEY_POWER);
 
 volDown = !volDown;
 power   = !power;
+
+/* Keep RT electrical pins/polarity, but invert menu navigation directions. */
+volumeKey = volUp;
+volUp = volDown;
+volDown = volumeKey;
 
   if (!initialized) {
     lastVolUp   = volUp;
