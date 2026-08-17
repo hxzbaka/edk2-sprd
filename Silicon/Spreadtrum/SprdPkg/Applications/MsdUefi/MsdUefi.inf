@@ -1,0 +1,38 @@
+[Defines]
+  INF_VERSION                    = 0x0001001A
+  BASE_NAME                      = MsdUefi
+  FILE_GUID                      = 43B3B65E-8B3B-4397-8C25-1605C8F4345C
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 0.1
+  ENTRY_POINT                    = MsdUefiEntryPoint
+
+[Sources]
+  MsdUefi.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  DevicePathLib
+  MemoryAllocationLib
+  PcdLib
+  TimerLib
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiLib
+
+[Protocols]
+  gEfiBlockIoProtocolGuid          ## CONSUMES
+  gEfiDevicePathProtocolGuid       ## CONSUMES
+  gEfiSimpleFileSystemProtocolGuid ## CONSUMES
+  gSprdUsbMsdProtocolGuid          ## CONSUMES
+
+[Pcd]
+  gSprdTokenSpaceGuid.UsbMassStorage
+
+[Depex]
+  gSprdUsbMsdProtocolGuid

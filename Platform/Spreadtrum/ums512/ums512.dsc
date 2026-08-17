@@ -47,6 +47,11 @@
   gArmPlatformTokenSpaceGuid.PcdClusterCount|2
 
   #
+  # USB Mass Storage
+  #
+   gSprdTokenSpaceGuid.UsbMassStorage|TRUE
+
+  #
   # SimpleInit
   #
   gSimpleInitTokenSpaceGuid.PcdDeviceTreeStore|0x84150000

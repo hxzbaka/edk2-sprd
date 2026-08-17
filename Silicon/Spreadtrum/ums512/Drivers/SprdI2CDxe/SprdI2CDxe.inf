@@ -1,0 +1,32 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = SprdI2CDxe
+  FILE_GUID                      = E91E3E0D-2E25-40E9-93C4-D11FE73C5D6A
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdI2CDxeEntryPoint
+
+[Sources]
+  SprdI2CDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Spreadtrum/ums512/ums512.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  IoLib
+  MemoryAllocationLib
+  TimerLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gEfiI2cMasterProtocolGuid
+  gSprdAonI2cProtocolGuid
+
+[Depex]
+  TRUE

@@ -1,34 +1,29 @@
-## @file
-# CDC-EEM USB gadget for UMS512 / sharkl5pro.
-##
 [Defines]
-  INF_VERSION                    = 0x0001001A
+  INF_VERSION                    = 0x0001001B
   BASE_NAME                      = SprdUsbDxe
-  FILE_GUID                      = 6D63307E-4537-4C20-A384-23C9774B56CC
+  FILE_GUID                      = C3A2E9E3-E67B-4BA0-B0B6-6529C60B5271
   MODULE_TYPE                    = DXE_DRIVER
-  VERSION_STRING                 = 0.1
+  VERSION_STRING                 = 1.0
   ENTRY_POINT                    = SprdUsbDxeEntryPoint
-  UNLOAD_IMAGE                   = SprdUsbDxeUnload
 
 [Sources]
   SprdUsbDxe.c
 
 [Packages]
   MdePkg/MdePkg.dec
-  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+  MdeModulePkg/MdeModulePkg.dec
 
 [LibraryClasses]
-  BaseLib
-  BaseMemoryLib
   DebugLib
-  IoLib
   MemoryAllocationLib
-  TimerLib
-  UefiDriverEntryPoint
   UefiBootServicesTableLib
+  UefiDriverEntryPoint
 
 [Protocols]
-  gSprdUsbEemProtocolGuid
+  gEfiUsb2HcProtocolGuid
+
+[Guids]
+  gEfiEventDxeDispatchGuid
 
 [Depex]
-  TRUE
+  gEfiUsb2HcProtocolGuid

@@ -114,7 +114,6 @@ if (Fdt == NULL) {
                         (uint64_t*)&MemoryBase,
                         (uint64_t*)&MemorySize)) {
 
-    /* 防止 DTB 写错/重叠导致爆炸 */
     if (MemorySize == 0) {
       Node++;
       continue;
@@ -132,13 +131,11 @@ if (Fdt == NULL) {
     Node++;
   }
 
-  /* DTB存在但没有 memory node */
   if (MemoryTotal == 0) {
     DEBUG((EFI_D_WARN, "FDT has no memory nodes, fallback to 4GB\n"));
     MemoryTotal = 4ULL * SIZE_GB;
   }
 
-  /* clamp：你的硬件就是4GB DDR */
   if (MemoryTotal > (4ULL * SIZE_GB)) {
     DEBUG((EFI_D_WARN, "FDT memory > 4GB, clamp to 4GB\n"));
     MemoryTotal = 4ULL * SIZE_GB;

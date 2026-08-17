@@ -1,0 +1,426 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 hxzbaka
+ *
+ * Physical button driver for Spreadtrum UMS512, providing SimpleTextIn via
+ * hardware volume up/down, power, AI, and HALL keys.
+ */
+
+#include <Uefi.h>
+#include <Protocol/SimpleTextIn.h>
+#include <Protocol/DevicePath.h>
+#include <Guid/ConsoleInDevice.h>
+#include <Library/UefiBootServicesTableLib.h>
+#include <Library/DebugLib.h>
+#include <Library/BaseMemoryLib.h>
+#include <Protocol/EFIClock.h>
+#include <Protocol/SprdGpioProtocol.h>
+#include "SprdButtonDxe.h"
+
+#define KEY_QUEUE_SIZE 16
+
+typedef struct {
+  EFI_INPUT_KEY Keys[KEY_QUEUE_SIZE];
+  UINTN         Head;
+  UINTN         Tail;
+} KEY_QUEUE;
+
+STATIC KEY_QUEUE mQueue;
+STATIC EFI_EVENT mWaitEvent;
+STATIC EFI_EVENT mTimerEvent;
+STATIC EFI_HANDLE mHandle = NULL;
+STATIC SPRD_GPIO_PROTOCOL *mGpio;
+STATIC EFI_CLOCK_PROTOCOL *ClockProtocol;
+
+#define PLAT_KEYPAD_DEVICE_GUID \
+  {0xD7F58A0E, 0xBED2, 0x4B5A, {0xBB, 0x43, 0x8A, 0xB2, 0x3D, 0xD0, 0xE2, 0xB0}}
+
+#pragma pack(1)
+typedef struct {
+  VENDOR_DEVICE_PATH       Vendor;
+  EFI_DEVICE_PATH_PROTOCOL End;
+} KEYPAD_DEVICE_PATH;
+#pragma pack()
+
+STATIC KEYPAD_DEVICE_PATH mDevicePath = {
+  {
+    {
+      HARDWARE_DEVICE_PATH,
+      HW_VENDOR_DP,
+      { sizeof(VENDOR_DEVICE_PATH), 0 }
+    },
+    PLAT_KEYPAD_DEVICE_GUID
+  },
+  {
+    END_DEVICE_PATH_TYPE,
+    END_ENTIRE_DEVICE_PATH_SUBTYPE,
+    { sizeof(EFI_DEVICE_PATH_PROTOCOL), 0 }
+  }
+};
+
+STATIC
+EFI_STATUS
+EFIAPI
+ButtonReset (
+  IN EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
+  IN BOOLEAN                        ExtendedVerification
+  )
+{
+  mQueue.Head = mQueue.Tail = 0;
+  return EFI_SUCCESS;
+}
+
+STATIC
+EFI_STATUS
+EFIAPI
+ButtonReadKey (
+  IN  EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This,
+  OUT EFI_INPUT_KEY                  *Key
+  )
+{
+  if (mQueue.Head == mQueue.Tail) {
+    return EFI_NOT_READY;
+  }
+  CopyMem (Key, &mQueue.Keys[mQueue.Head], sizeof(EFI_INPUT_KEY));
+  mQueue.Head = (mQueue.Head + 1) % KEY_QUEUE_SIZE;
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_SIMPLE_TEXT_INPUT_PROTOCOL mSimpleTextIn = {
+  ButtonReset,
+  ButtonReadKey,
+  NULL
+};
+
+STATIC
+VOID
+EnqueueKey (
+  IN EFI_INPUT_KEY *Key
+  )
+{
+  UINTN Next = (mQueue.Tail + 1) % KEY_QUEUE_SIZE;
+
+  if (Next == mQueue.Head) {
+    DEBUG ((DEBUG_WARN, "[BTN] Queue full, dropping key\n"));
+    return;
+  }
+
+  CopyMem (&mQueue.Keys[mQueue.Tail], Key, sizeof(EFI_INPUT_KEY));
+  mQueue.Tail = Next;
+  gBS->SignalEvent (mWaitEvent);
+}
+
+STATIC
+VOID
+EFIAPI
+ScanTimerHandler (
+  IN EFI_EVENT Event,
+  IN VOID      *Context
+  )
+{
+  static BOOLEAN initialized = FALSE;
+  static BOOLEAN lastVolUp;
+  static BOOLEAN lastVolDown;
+  static BOOLEAN lastPower;
+  static BOOLEAN lastAi;
+  static BOOLEAN lastHall;
+
+  static UINTN holdVolUp   = 0;
+  static UINTN holdVolDown = 0;
+  static UINTN holdPower   = 0;
+  static UINTN holdAi      = 0;
+  static UINTN holdHall    = 0;
+
+  static BOOLEAN repeatVolUp   = FALSE;
+  static BOOLEAN repeatVolDown = FALSE;
+  static BOOLEAN repeatPower   = FALSE;
+  static BOOLEAN repeatAi      = FALSE;
+  static BOOLEAN repeatHall    = FALSE;
+
+  BOOLEAN volUp;
+  BOOLEAN volDown;
+  BOOLEAN power;
+  BOOLEAN ai;
+  BOOLEAN hall;
+
+  if (mGpio == NULL) {
+    return;
+  }
+
+  // Read raw GPIO states
+  volUp   = mGpio->Get (GPIO_KEY_VOLUP);
+  volDown = mGpio->Get (GPIO_KEY_VOLDOWN);
+  power   = mGpio->Get (GPIO_KEY_POWER);
+  ai      = mGpio->Get (GPIO_KEY_AI);
+  hall    = mGpio->Get (GPIO_KEY_HALL);
+
+  /*
+   * Polarity adjustment per DTS:
+   *  - Vol+  : PMIC EIC4, active high -> no inversion
+   *  - Vol-  : AP GPIO124, active low  -> invert
+   *  - Power : PMIC EIC1, active low   -> invert
+   *  - AI    : AP GPIO91, active low   -> invert
+   *  - Hall  : AP GPIO88, active low   -> invert
+   */
+  volDown = !volDown;
+  power   = !power;
+  ai      = !ai;
+  hall    = !hall;
+
+  if (!initialized) {
+    lastVolUp   = volUp;
+    lastVolDown = volDown;
+    lastPower   = power;
+    lastAi      = ai;
+    lastHall    = hall;
+    initialized = TRUE;
+    return;
+  }
+
+  // --- Volume Up (SCAN_UP) ---
+  if (volUp) {
+    if (!lastVolUp) {
+      EFI_INPUT_KEY Key = { SCAN_UP, 0 };
+      EnqueueKey (&Key);
+      DEBUG ((DEBUG_INFO, "[BTN] VOL+ pressed\n"));
+      holdVolUp = 0;
+      repeatVolUp = FALSE;
+    } else {
+      holdVolUp++;
+      if (holdVolUp == 10) {
+        EFI_INPUT_KEY Key = { SCAN_UP, 0 };
+        EnqueueKey (&Key);
+        DEBUG ((DEBUG_INFO, "[BTN] VOL+ auto-repeat start\n"));
+        repeatVolUp = TRUE;
+      } else if (holdVolUp > 10 && repeatVolUp) {
+        EFI_INPUT_KEY Key = { SCAN_UP, 0 };
+        EnqueueKey (&Key);
+      }
+    }
+  } else {
+    if (lastVolUp) {
+      DEBUG ((DEBUG_INFO, "[BTN] VOL+ released\n"));
+      holdVolUp = 0;
+      repeatVolUp = FALSE;
+    }
+  }
+
+  // --- Volume Down (SCAN_DOWN) ---
+  if (volDown) {
+    if (!lastVolDown) {
+      EFI_INPUT_KEY Key = { SCAN_DOWN, 0 };
+      EnqueueKey (&Key);
+      DEBUG ((DEBUG_INFO, "[BTN] VOL- pressed\n"));
+      holdVolDown = 0;
+      repeatVolDown = FALSE;
+    } else {
+      holdVolDown++;
+      if (holdVolDown == 10) {
+        EFI_INPUT_KEY Key = { SCAN_DOWN, 0 };
+        EnqueueKey (&Key);
+        DEBUG ((DEBUG_INFO, "[BTN] VOL- auto-repeat start\n"));
+        repeatVolDown = TRUE;
+      } else if (holdVolDown > 10 && repeatVolDown) {
+        EFI_INPUT_KEY Key = { SCAN_DOWN, 0 };
+        EnqueueKey (&Key);
+      }
+    }
+  } else {
+    if (lastVolDown) {
+      DEBUG ((DEBUG_INFO, "[BTN] VOL- released\n"));
+      holdVolDown = 0;
+      repeatVolDown = FALSE;
+    }
+  }
+
+  // --- Power (Enter) ---
+  if (power) {
+    if (!lastPower) {
+      EFI_INPUT_KEY Key = { 0, CHAR_CARRIAGE_RETURN };
+      EnqueueKey (&Key);
+      DEBUG ((DEBUG_INFO, "[BTN] POWER pressed\n"));
+      holdPower = 0;
+      repeatPower = FALSE;
+    } else {
+      holdPower++;
+      if (holdPower == 10) {
+        EFI_INPUT_KEY Key = { 0, CHAR_CARRIAGE_RETURN };
+        EnqueueKey (&Key);
+        DEBUG ((DEBUG_INFO, "[BTN] POWER auto-repeat start\n"));
+        repeatPower = TRUE;
+      } else if (holdPower > 10 && repeatPower) {
+        EFI_INPUT_KEY Key = { 0, CHAR_CARRIAGE_RETURN };
+        EnqueueKey (&Key);
+      }
+    }
+  } else {
+    if (lastPower) {
+      DEBUG ((DEBUG_INFO, "[BTN] POWER released\n"));
+      holdPower = 0;
+      repeatPower = FALSE;
+    }
+  }
+
+  // --- AI Key (ESC) ---
+  if (ai) {
+    if (!lastAi) {
+      EFI_INPUT_KEY Key = { 0, 0x1B };
+      EnqueueKey (&Key);
+      DEBUG ((DEBUG_INFO, "[BTN] AI pressed\n"));
+      holdAi = 0;
+      repeatAi = FALSE;
+    } else {
+      holdAi++;
+      if (holdAi == 10) {
+        EFI_INPUT_KEY Key = { 0, 0x1B };
+        EnqueueKey (&Key);
+        DEBUG ((DEBUG_INFO, "[BTN] AI auto-repeat start\n"));
+        repeatAi = TRUE;
+      } else if (holdAi > 10 && repeatAi) {
+        EFI_INPUT_KEY Key = { 0, 0x1B };
+        EnqueueKey (&Key);
+      }
+    }
+  } else {
+    if (lastAi) {
+      DEBUG ((DEBUG_INFO, "[BTN] AI released\n"));
+      holdAi = 0;
+      repeatAi = FALSE;
+    }
+  }
+
+  // --- HALL SENSOR (F10) ---
+  if (hall) {
+    if (!lastHall) {
+      EFI_INPUT_KEY Key = { SCAN_F10, 0 };
+      EnqueueKey (&Key);
+      DEBUG ((DEBUG_INFO, "[BTN] HALL pressed\n"));
+      holdHall = 0;
+      repeatHall = FALSE;
+    } else {
+      holdHall++;
+      if (holdHall == 10) {
+        EFI_INPUT_KEY Key = { SCAN_F10, 0 };
+        EnqueueKey (&Key);
+        DEBUG ((DEBUG_INFO, "[BTN] HALL auto-repeat start\n"));
+        repeatHall = TRUE;
+      } else if (holdHall > 10 && repeatHall) {
+        EFI_INPUT_KEY Key = { SCAN_F10, 0 };
+        EnqueueKey (&Key);
+      }
+    }
+  } else {
+    if (lastHall) {
+      DEBUG ((DEBUG_INFO, "[BTN] HALL released\n"));
+      holdHall = 0;
+      repeatHall = FALSE;
+    }
+  }
+
+  lastVolUp   = volUp;
+  lastVolDown = volDown;
+  lastPower   = power;
+  lastAi      = ai;
+  lastHall    = hall;
+}
+
+EFI_STATUS
+EFIAPI
+SprdButtonDxeEntry (
+  IN EFI_HANDLE       ImageHandle,
+  IN EFI_SYSTEM_TABLE *SystemTable
+  )
+{
+  EFI_STATUS Status;
+
+  DEBUG ((DEBUG_ERROR, "[SprdButton] Starting\n"));
+
+  ZeroMem (&mQueue, sizeof(mQueue));
+  mWaitEvent  = NULL;
+  mTimerEvent = NULL;
+
+  // Try to enable necessary clocks (ADI for PMIC, EIC for debounce)
+  Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID**)&ClockProtocol);
+  if (!EFI_ERROR (Status)) {
+    UINTN ClkId;
+
+    Status = ClockProtocol->GetClockID (ClockProtocol, "adi", &ClkId);
+    if (!EFI_ERROR (Status)) {
+      ClockProtocol->EnableClock (ClockProtocol, ClkId);
+      DEBUG ((DEBUG_INFO, "[BTN] ADI clock enabled\n"));
+    } else {
+      DEBUG ((DEBUG_WARN, "[BTN] ADI clock not found\n"));
+    }
+
+    Status = ClockProtocol->GetClockID (ClockProtocol, "eic_debounce", &ClkId);
+    if (!EFI_ERROR (Status)) {
+      ClockProtocol->EnableClock (ClockProtocol, ClkId);
+      DEBUG ((DEBUG_INFO, "[BTN] EIC debounce clock enabled\n"));
+    } else {
+      DEBUG ((DEBUG_WARN, "[BTN] EIC debounce clock not found\n"));
+    }
+  } else {
+    DEBUG ((DEBUG_WARN, "[BTN] Clock protocol not found, assuming clocks already on\n"));
+  }
+
+  // Create wait event for SimpleTextIn
+  Status = gBS->CreateEvent (0, TPL_NOTIFY, NULL, NULL, &mWaitEvent);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "[SprdButton] CreateEvent(mWaitEvent) failed: %r\n", Status));
+    return Status;
+  }
+
+  // Locate GPIO protocol
+  Status = gBS->LocateProtocol (&gSprdGpioProtocolGuid, NULL, (VOID **)&mGpio);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "[SprdButton] GPIO protocol not found: %r\n", Status));
+    return Status;
+  }
+
+  // Configure GPIO directions
+  mGpio->DirectionInput (GPIO_KEY_POWER);
+  mGpio->DirectionInput (GPIO_KEY_VOLUP);
+  mGpio->DirectionInput (GPIO_KEY_VOLDOWN);
+  mGpio->DirectionInput (GPIO_KEY_AI);
+  mGpio->DirectionInput (GPIO_KEY_HALL);
+
+  // Install SimpleTextIn and DevicePath
+  mSimpleTextIn.WaitForKey = mWaitEvent;
+
+  Status = gBS->InstallMultipleProtocolInterfaces (
+                  &mHandle,
+                  &gEfiSimpleTextInProtocolGuid,  &mSimpleTextIn,
+                  &gEfiDevicePathProtocolGuid,     &mDevicePath,
+                  &gEfiConsoleInDeviceGuid,        NULL,
+                  NULL
+                  );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "InstallMultipleProtocolInterfaces failed: %r\n", Status));
+    return Status;
+  }
+
+  gBS->ConnectController (mHandle, NULL, NULL, TRUE);
+
+  // Create periodic timer for scanning keys (100ms)
+  Status = gBS->CreateEvent (
+                  EVT_TIMER | EVT_NOTIFY_SIGNAL,
+                  TPL_CALLBACK,
+                  ScanTimerHandler,
+                  NULL,
+                  &mTimerEvent
+                  );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "[SprdButton] CreateEvent(mTimerEvent) failed: %r\n", Status));
+    return Status;
+  }
+
+  Status = gBS->SetTimer (mTimerEvent, TimerPeriodic, 1000000); // 100ms
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "[SprdButton] SetTimer failed: %r\n", Status));
+    return Status;
+  }
+
+  DEBUG ((DEBUG_ERROR, "[SprdButton] Ready\n"));
+  return EFI_SUCCESS;
+}

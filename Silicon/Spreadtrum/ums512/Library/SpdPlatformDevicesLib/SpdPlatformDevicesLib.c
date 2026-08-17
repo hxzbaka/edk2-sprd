@@ -69,11 +69,12 @@ UpdateAcpiTablesForSprd(VOID)
     DEBUG((EFI_D_INFO, "Platform: Chip ID=0x%x, Version=0x%x, Name=%a, Subtype=%d, UID=0x%llx\n",
            ChipId, ChipVer, ChipName, PlatformSubtype, Uid));
 
-    UpdateNameAslCode(SIGNATURE_32('S', 'O', 'I', 'D'), &ChipId, 4);
-    UpdateNameAslCode(SIGNATURE_32('S', 'I', 'D', 'V'), &ChipVer, 4);
-    UpdateNameAslCode(SIGNATURE_32('S', 'I', 'D', 'S'), ChipName, AsciiStrLen(ChipName)+1);
-    UpdateNameAslCode(SIGNATURE_32('P', 'L', 'S', 'T'), &PlatformSubtype, 4);
-    UpdateNameAslCode(SIGNATURE_32('S', 'O', 'S', 'N'), &Uid, 8);
+    //
+    // Preserve the compiled AML Name() operands. UpdateNameAslCode() writes a
+    // fixed number of bytes without decoding the operand encoding; updating
+    // Zero/Word AML integers here corrupts the following namespace objects.
+    //
+    DEBUG((EFI_D_INFO, "SPRD-ACPI: preserving compiled DSDT Name() values\n"));
 }
 
 

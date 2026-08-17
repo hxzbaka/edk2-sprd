@@ -86,7 +86,27 @@ Device (GPI0)
     Name (_CRS, ResourceTemplate ()
     {
         Memory32Fixed (ReadWrite, 0x32070000, 0x00010000)
-        Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 0x5D }
+
+        // GpioClx binds one interrupt resource to each AP GPIO bank.  The
+        // UMS512 hardware routes all 16 banks through GIC SPI 61 (GSI 0x5D),
+        // so the same parent interrupt is described once for every bank.
+        // The descriptors must be shared because they use the same GIC line.
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Shared) { 0x5D }
     })
 }
 
@@ -98,7 +118,9 @@ Scope (\_SB.PMI0)
         Name (_UID, Zero)
         Method (_STA, 0, NotSerialized)
         {
-            Return (0x0F)
+            // The EIC register address is an SC2730 ADI offset, not CPU MMIO.
+            // Keep it hidden until a PMIC/ADI-backed EIC controller exists.
+            Return (Zero)
         }
         Name (_CRS, ResourceTemplate ()
         {

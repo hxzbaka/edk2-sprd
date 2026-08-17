@@ -105,8 +105,8 @@ SMBIOS_TABLE_TYPE0 mBIOSInfoType0 = {
     0xFF, // EmbeddedControllerFirmwareMinorRelease
 };
 
-CHAR8 mBiosVendor[128]  = "Renegade-Project";
-CHAR8 mBiosVersion[128] = "edk2-msm";
+CHAR8 mBiosVendor[128]  = "Unisoc-Woa-Project";
+CHAR8 mBiosVersion[128] = "edk2-sprd";
 CHAR8 mBiosDate[12]     = __DATE__;
 
 CHAR8 *mBIOSInfoType0Strings[] = {
@@ -365,7 +365,7 @@ SMBIOS_TABLE_TYPE11 mOemStringsType11 = {
     1 // StringCount
 };
 CHAR8 *mOemStringsType11Strings[] = {
-    "https://github.com/edk2-porting/edk2-msm", NULL};
+    "https://github.com/hxzbaka/edk2-sprd", NULL};
 
 /***********************************************************************
         SMBIOS data definition  TYPE16  Physical Memory ArrayInformation
@@ -537,7 +537,7 @@ PlatformSmbiosDriverEntryPoint(
 
   // TYPE0 BIOS Information
   AsciiSPrint(
-      mBiosVersion, sizeof(mBiosVersion), "edk2-msm %s",
+      mBiosVersion, sizeof(mBiosVersion), "edk2-sprd %s",
       (CHAR16 *)FixedPcdGetPtr(PcdFirmwareVersionString));
   LogSmbiosData(
       (EFI_SMBIOS_TABLE_HEADER *)&mBIOSInfoType0, mBIOSInfoType0Strings, NULL);

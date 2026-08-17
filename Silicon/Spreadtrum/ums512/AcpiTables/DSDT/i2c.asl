@@ -46,6 +46,30 @@ Device (I2C1)
     })
 }
 
+Device (I2C2)
+{
+    Name (_HID, "SPRD0006")
+    Name (_UID, 0x02)
+    Name (_CCA, One)
+    Method (_STA, 0, NotSerialized)
+    {
+        Return (0x0F)
+    }
+    Name (_CRS, ResourceTemplate ()
+    {
+        Memory32Fixed (ReadWrite, 0x70500000, 0x00000100)
+        Interrupt (ResourceConsumer, Level, ActiveHigh, Exclusive) { 0x2D }
+    })
+    Name (_DSD, Package ()
+    {
+        ToUUID ("daffd814-6eba-4d8c-8a91-bc9bbf4aa301"),
+        Package ()
+        {
+            Package () { "clock-frequency", 0x61A80 }
+        }
+    })
+}
+
 Device (I2C3)
 {
     Name (_HID, "SPRD0006")
