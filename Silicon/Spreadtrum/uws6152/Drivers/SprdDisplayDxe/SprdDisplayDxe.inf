@@ -53,6 +53,14 @@
   gSprdTokenSpaceGuid.PcdDsiEscapeClock
   gSprdTokenSpaceGuid.PcdDsiLaneCount
   gSprdTokenSpaceGuid.PcdDisplayCmdMode
+  gSprdTokenSpaceGuid.PcdDisplaySwitchToVideoMode
+  gSprdTokenSpaceGuid.PcdDisplayVideoModeType
+  gSprdTokenSpaceGuid.PcdDisplayHSync
+  gSprdTokenSpaceGuid.PcdDisplayHBackPorch
+  gSprdTokenSpaceGuid.PcdDisplayHFrontPorch
+  gSprdTokenSpaceGuid.PcdDisplayVSync
+  gSprdTokenSpaceGuid.PcdDisplayVBackPorch
+  gSprdTokenSpaceGuid.PcdDisplayVFrontPorch
   gSprdTokenSpaceGuid.PcdReconfigureDisplay
 
 [Depex]

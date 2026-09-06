@@ -33,6 +33,7 @@
 [FixedPcd]
   gSprdTokenSpaceGuid.PcdDisplayCmdMode
   gSprdTokenSpaceGuid.PcdDpuBaseAddress
+  gSprdTokenSpaceGuid.PcdDpuCfg0Reg
   gSprdTokenSpaceGuid.PcdDpuCtrlReg
   gSprdTokenSpaceGuid.PcdDpuIntClrReg
   gSprdTokenSpaceGuid.PcdDpuIntDoneBit
@@ -43,4 +44,3 @@
   gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
   gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp
   gSprdTokenSpaceGuid.PcdMipiFrameBufferDelay
-

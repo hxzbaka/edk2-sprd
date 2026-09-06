@@ -113,7 +113,7 @@
 
   gSprdTokenSpaceGuid.PcdLowRamSupport|FALSE|BOOLEAN|0x00010001
 
-  # EDPI Display
+  # Display
   gSprdTokenSpaceGuid.PcdDisplayCmdMode|FALSE|BOOLEAN|0x0000a410
   gSprdTokenSpaceGuid.PcdDpuBaseAddress|0x20300000|UINT32|0x0000a411
   gSprdTokenSpaceGuid.PcdDpuCtrlReg|0x0004|UINT32|0x0000a412
@@ -138,3 +138,12 @@
   gSprdTokenSpaceGuid.PcdDsiLaneCount|4|UINT8|0x0000a427
   gSprdTokenSpaceGuid.PcdApGpioBaseAddress|0x32070000|UINT32|0x0000a428
   gSprdTokenSpaceGuid.PcdPanelResetGpio|0|UINT32|0x0000a429
+  gSprdTokenSpaceGuid.PcdDisplayHSync|0|UINT32|0x0000a42a
+  gSprdTokenSpaceGuid.PcdDisplayHBackPorch|0|UINT32|0x0000a42b
+  gSprdTokenSpaceGuid.PcdDisplayHFrontPorch|0|UINT32|0x0000a42c
+  gSprdTokenSpaceGuid.PcdDisplayVSync|0|UINT32|0x0000a42d
+  gSprdTokenSpaceGuid.PcdDisplayVBackPorch|0|UINT32|0x0000a42e
+  gSprdTokenSpaceGuid.PcdDisplayVFrontPorch|0|UINT32|0x0000a42f
+  gSprdTokenSpaceGuid.PcdDisplaySwitchToVideoMode|FALSE|BOOLEAN|0x0000a430
+  gSprdTokenSpaceGuid.PcdDpuCfg0Reg|0x0008|UINT32|0x0000a431
+  gSprdTokenSpaceGuid.PcdDisplayVideoModeType|2|UINT8|0x0000a432

@@ -9,6 +9,7 @@ FILE FREEFORM = 7E374E25-8E01-4FEE-87F2-390C23C606CD {
   SECTION RAW = Silicon/Spreadtrum/uws6152/AcpiTables/BuiltIn/FADT.aml
   SECTION RAW = Silicon/Spreadtrum/uws6152/AcpiTables/BuiltIn/GTDT.aml
   SECTION RAW = Silicon/Spreadtrum/uws6152/AcpiTables/BuiltIn/MADT.aml
-//  SECTION RAW = Silicon/Spreadtrum/uws6152/AcpiTables/BuiltIn/SPCR.aml
+  SECTION RAW = Silicon/Spreadtrum/uws6152/AcpiTables/BuiltIn/SPCR.aml
+  SECTION RAW = Silicon/Spreadtrum/uws6152/AcpiTables/BuiltIn/PPTT.aml
   SECTION UI = "AcpiTables"
 }

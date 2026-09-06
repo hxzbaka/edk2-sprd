@@ -307,6 +307,11 @@ void FbConFlush(void)
   if (FixedPcdGetBool(PcdDisplayCmdMode)) {
     UINT32 DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
     UINT32 DoneBit = FixedPcdGet32(PcdDpuIntDoneBit);
+
+    if ((MmioRead32(DpuBase + FixedPcdGet32(PcdDpuCfg0Reg)) & BIT0) == 0) {
+      return;
+    }
+
     MmioWrite32(DpuBase + FixedPcdGet32(PcdDpuIntClrReg), DoneBit);
     MmioOr32(DpuBase + FixedPcdGet32(PcdDpuCtrlReg), BIT0);
     MicroSecondDelay(1000);

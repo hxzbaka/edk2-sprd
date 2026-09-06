@@ -51,6 +51,7 @@
   gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
   gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp
   gSprdTokenSpaceGuid.PcdDisplayCmdMode
+  gSprdTokenSpaceGuid.PcdDisplaySwitchToVideoMode
   gSprdTokenSpaceGuid.PcdDisplayHFlip
   gSprdTokenSpaceGuid.PcdDpuBaseAddress
   gSprdTokenSpaceGuid.PcdDpuCtrlReg

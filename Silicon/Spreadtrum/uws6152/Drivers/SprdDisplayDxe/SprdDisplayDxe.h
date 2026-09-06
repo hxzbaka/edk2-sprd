@@ -25,8 +25,16 @@ typedef struct {
   UINT32  PixelClock;
   UINT32  PhyBitClock;
   UINT32  EscapeClock;
+  UINT32  HSync;
+  UINT32  HBackPorch;
+  UINT32  HFrontPorch;
+  UINT32  VSync;
+  UINT32  VBackPorch;
+  UINT32  VFrontPorch;
   UINT8   Lanes;
+  UINT8   VideoModeType;
   BOOLEAN CommandMode;
+  BOOLEAN VideoMode;
 } SPRD_DISPLAY_CONFIG;
 
 EFI_STATUS

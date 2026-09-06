@@ -34,6 +34,8 @@
 #define DPU_INT_CLR     0x01E4
 #define DPU_INT_RAW     0x01EC
 #define DPU_DPI_CTRL    0x01F0
+#define DPU_DPI_H_TIMING 0x01F4
+#define DPU_DPI_V_TIMING 0x01F8
 #define DPU_ENHANCE_CFG 0x0200
 #define DPU_SLP_LUT_ADDR  0x02D0
 #define DPU_SLP_LUT_WDATA 0x02D4
@@ -47,11 +49,11 @@
 
 #define DPU_CTRL_RUN          BIT0
 #define DPU_CTRL_STOP         BIT1
-#define DPU_CTRL_UPDATE       BIT2
 #define DPU_INT_DONE           BIT0
 #define DPU_CFG0_EDPI          BIT0
 #define DPU_DPI_TE_ENABLE      BIT8
 #define DPU_DPI_TE_EXTERNAL    BIT10
+#define DPU_DPI_HALT_ENABLE    BIT16
 #define DPU_LAYER_ENABLE       BIT0
 #define DPU_LAYER_ALPHA_LAYER  BIT2
 #define DPU_LAYER_ARGB8888     (3U << 4)
@@ -180,11 +182,22 @@ SprdDpuInitialize(IN CONST SPRD_DISPLAY_CONFIG *Config)
 
   DpuReloadEnhance(Config);
 
-  if (Config->CommandMode) {
+  if (!Config->VideoMode) {
     MmioOr32(Config->DpuBase + DPU_CFG0, DPU_CFG0_EDPI);
     MmioOr32(
         Config->DpuBase + DPU_DPI_CTRL,
         DPU_DPI_TE_ENABLE | DPU_DPI_TE_EXTERNAL);
+  } else {
+    MmioAnd32(Config->DpuBase + DPU_CFG0, ~DPU_CFG0_EDPI);
+    MmioAnd32(Config->DpuBase + DPU_DPI_CTRL, ~DPU_DPI_HALT_ENABLE);
+    MmioWrite32(
+        Config->DpuBase + DPU_DPI_H_TIMING,
+        Config->HSync | (Config->HBackPorch << 8) |
+        (Config->HFrontPorch << 20));
+    MmioWrite32(
+        Config->DpuBase + DPU_DPI_V_TIMING,
+        Config->VSync | (Config->VBackPorch << 8) |
+        (Config->VFrontPorch << 20));
   }
 }
 
@@ -208,15 +221,13 @@ SprdDpuConfigureLayer(IN CONST SPRD_DISPLAY_CONFIG *Config)
 VOID
 SprdDpuRun(IN CONST SPRD_DISPLAY_CONFIG *Config)
 {
-  if (!Config->CommandMode) {
-    MmioOr32(Config->DpuBase + DPU_CTRL, DPU_CTRL_UPDATE);
-  } else {
+  if (!Config->VideoMode) {
     MmioWrite32(Config->DpuBase + DPU_INT_CLR, DPU_INT_DONE);
   }
 
   MmioOr32(Config->DpuBase + DPU_CTRL, DPU_CTRL_RUN);
 
-  if (Config->CommandMode) {
+  if (!Config->VideoMode) {
     DpuPollRaw(Config, DPU_INT_DONE, 500);
     MmioWrite32(Config->DpuBase + DPU_INT_CLR, DPU_INT_DONE);
     gBS->Stall(20000);

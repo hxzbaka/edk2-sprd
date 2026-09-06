@@ -120,16 +120,30 @@ SprdDisplayDxeInitialize(
   Config.PixelClock   = FixedPcdGet32(PcdMipiPixelClock);
   Config.PhyBitClock  = FixedPcdGet32(PcdDsiPhyBitClock);
   Config.EscapeClock  = FixedPcdGet32(PcdDsiEscapeClock);
+  Config.HSync        = FixedPcdGet32(PcdDisplayHSync);
+  Config.HBackPorch   = FixedPcdGet32(PcdDisplayHBackPorch);
+  Config.HFrontPorch  = FixedPcdGet32(PcdDisplayHFrontPorch);
+  Config.VSync        = FixedPcdGet32(PcdDisplayVSync);
+  Config.VBackPorch   = FixedPcdGet32(PcdDisplayVBackPorch);
+  Config.VFrontPorch  = FixedPcdGet32(PcdDisplayVFrontPorch);
   Config.Lanes        = FixedPcdGet8(PcdDsiLaneCount);
+  Config.VideoModeType = FixedPcdGet8(PcdDisplayVideoModeType);
   Config.CommandMode  = FixedPcdGetBool(PcdDisplayCmdMode);
+  Config.VideoMode    = FixedPcdGetBool(PcdDisplaySwitchToVideoMode) ||
+      !Config.CommandMode;
 
   if ((Config.DpuBase == 0) || (Config.DsiBase == 0) ||
       (Config.ApAhbBase == 0) || (Config.ApClkBase == 0) ||
       (Config.PmuApbBase == 0) || (Config.FrameBuffer == 0) ||
       (Config.Width == 0) || (Config.Height == 0) ||
       (Config.PixelClock == 0) || (Config.PhyBitClock == 0) ||
-      (Config.EscapeClock == 0) || (Config.Lanes == 0) ||
-      !Config.CommandMode) {
+      (Config.EscapeClock == 0) || (Config.Lanes == 0)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (Config.VideoMode &&
+      ((Config.HSync == 0) || (Config.VSync == 0) ||
+       (Config.VideoModeType > 3))) {
     return EFI_INVALID_PARAMETER;
   }
 

@@ -56,6 +56,7 @@
   gSprdTokenSpaceGuid.PcdApClkBaseAddress|0x20200000
   gSprdTokenSpaceGuid.PcdPmuApbBaseAddress|0x327E0000
   gSprdTokenSpaceGuid.PcdDpuBaseAddress|0x20300000
+  gSprdTokenSpaceGuid.PcdDpuCfg0Reg|0x0008
   gSprdTokenSpaceGuid.PcdDsiBaseAddress|0x20400000
   gSprdTokenSpaceGuid.PcdApGpioBaseAddress|0x32070000
   gSprdTokenSpaceGuid.PcdDpuCtrlReg|0x0004

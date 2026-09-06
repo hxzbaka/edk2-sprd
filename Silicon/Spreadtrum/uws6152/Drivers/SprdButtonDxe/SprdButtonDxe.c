@@ -151,9 +151,13 @@ ScanTimerHandler (
   UINT32 ApEic   = MmioRead32 (AP_EIC_BASE);
   UINT16 PmicEic = AdiRead (PMIC_EIC_BASE);
 
-  BOOLEAN volUp   = !(ApEic & (1 << 2));      // active low
-  BOOLEAN volDown = !!(ApEic & (1 << 10));    // active high
-  BOOLEAN power   = !(PmicEic & (1 << 1));   // active low
+//  BOOLEAN volUp   = !(ApEic & (1 << 2));      // active low
+//  BOOLEAN volDown = !!(ApEic & (1 << 10));    // active high
+//  BOOLEAN power   = !(PmicEic & (1 << 1));   // active low
+
+  BOOLEAN volUp   = !!(ApEic & (1 << 10));   // active high
+  BOOLEAN volDown = !(ApEic & (1 << 2)); // active low
+  BOOLEAN power   = !(PmicEic & (1 << 1)); // active low
 
   if (!initialized) {
     MmioWrite32 (AP_EIC_BASE + AP_EIC_MASK_OFFSET, 0xFFFFFFFF);

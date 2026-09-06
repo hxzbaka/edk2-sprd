@@ -19,6 +19,15 @@
 #define DSI_MODE_CFG                 0x0018
 #define DSI_VIRTUAL_CHANNEL_ID       0x001C
 #define DSI_DPI_VIDEO_FORMAT         0x0020
+#define DSI_VIDEO_PKT_CONFIG         0x0024
+#define DSI_VIDEO_LINE_HBLK_TIME     0x0028
+#define DSI_VIDEO_LINE_TIME          0x002C
+#define DSI_VIDEO_VBLK_LINES         0x0030
+#define DSI_VIDEO_VACTIVE_LINES      0x0034
+#define DSI_VID_MODE_CFG             0x0038
+#define DSI_TIMEOUT_CNT_CLK_CONFIG   0x0040
+#define DSI_HTX_TO_CONFIG            0x0044
+#define DSI_LRX_H_TO_CONFIG          0x0048
 #define DSI_TX_ESCAPE_CLOCK_CONFIG   0x005C
 #define DSI_CMD_MODE_CFG             0x0068
 #define DSI_PHY_CLKLANE_TIME_CONFIG  0x00A8
@@ -27,14 +36,21 @@
 #define DSI_RX_PKT_CHECK_CONFIG      0x00B4
 #define DSI_TA_EN                    0x00B8
 #define DSI_EOTP_EN                  0x00BC
+#define DSI_VIDEO_NULLPKT_SIZE       0x00C0
 #define DSI_DCS_WM_PKT_SIZE          0x00C4
+#define DSI_VIDEO_SIG_DELAY_CONFIG   0x00D0
 #define DSI_GEN_HDR                  0x006C
 #define DSI_GEN_PLD_DATA             0x0070
 #define DSI_CMD_MODE_STATUS          0x0098
 
+#define DSI_MODE_VIDEO            0U
 #define DSI_MODE_COMMAND          1U
 #define DSI_COLOR_CODE_24BIT      5U
 #define DSI_VIDEO_FORMAT_MASK     0x3FU
+#define DSI_VIDEO_LP_PORCH_ENABLE   0x00003F00U
+#define DSI_RGB888_BYTES_PER_PIXEL_X100 300U
+#define DSI_PACKET_HEADER_BYTES       6U
+#define DSI_NULL_PACKET_MAX           1023U
 #define DSI_RX_ECC_ENABLE         BIT0
 #define DSI_RX_CRC_ENABLE         BIT1
 #define DSI_BTA_ENABLE            BIT0
@@ -89,6 +105,131 @@ DsiConfigureEdpi(IN CONST SPRD_DISPLAY_CONFIG *Config)
   MmioWrite32(Config->DsiBase + DSI_MASK_PROTOCOL_INT, 0xFFFFFFFFU);
   MmioWrite32(Config->DsiBase + DSI_MASK_INTERNAL_INT, 0xFFFFFFFFU);
   DsiPowerEnable(Config, TRUE);
+}
+
+STATIC
+EFI_STATUS
+DsiConfigureDpi(IN CONST SPRD_DISPLAY_CONFIG *Config)
+{
+  UINT32 ByteClock;
+  UINT32 BytesLeft;
+  UINT32 BytesPerChunk;
+  UINT32 ChunkOverhead;
+  UINT32 Chunks;
+  UINT32 HorizontalTotal;
+  UINT32 NullPacketSize;
+  UINT32 PixelClockKhz;
+  UINT32 RatioX1000;
+  UINT32 TimeoutCount;
+  UINT32 TimeoutDivider;
+  UINT32 TotalBytes;
+  UINT32 VideoSize;
+
+  ByteClock = Config->PhyBitClock / 8;
+  PixelClockKhz = Config->PixelClock / 1000;
+  if ((ByteClock == 0) || (PixelClockKhz == 0)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  HorizontalTotal = Config->Width + Config->HSync +
+      Config->HBackPorch + Config->HFrontPorch;
+  RatioX1000 = ByteClock * 1000 / PixelClockKhz;
+  VideoSize = Config->Width;
+  Chunks = 0;
+  NullPacketSize = 0;
+
+  if (Config->VideoModeType < 2) {
+    BytesPerChunk = Config->Width * DSI_RGB888_BYTES_PER_PIXEL_X100 / 100 +
+        DSI_PACKET_HEADER_BYTES;
+    TotalBytes = (Config->Width + Config->HFrontPorch) * RatioX1000 *
+        Config->Lanes / 1000 * 100 / 120;
+    if (TotalBytes < BytesPerChunk) {
+      return EFI_UNSUPPORTED;
+    }
+
+    ChunkOverhead = TotalBytes - BytesPerChunk;
+    if (ChunkOverhead > 1) {
+      BytesLeft = 0;
+      for (VideoSize = 1; VideoSize < Config->Width; VideoSize++) {
+        if (((Config->Width * 1000 / VideoSize) % 1000) != 0) {
+          continue;
+        }
+
+        Chunks = Config->Width / VideoSize;
+        BytesPerChunk =
+            DSI_RGB888_BYTES_PER_PIXEL_X100 * VideoSize / 100 +
+            DSI_PACKET_HEADER_BYTES;
+        if (TotalBytes >= (BytesPerChunk * Chunks)) {
+          BytesLeft = TotalBytes - BytesPerChunk * Chunks;
+          break;
+        }
+      }
+
+      if (BytesLeft > (DSI_PACKET_HEADER_BYTES * Chunks)) {
+        NullPacketSize =
+            (BytesLeft - DSI_PACKET_HEADER_BYTES * Chunks) / Chunks;
+        if (NullPacketSize > DSI_NULL_PACKET_MAX) {
+          NullPacketSize = DSI_NULL_PACKET_MAX;
+        }
+      }
+    } else {
+      Chunks = 1;
+    }
+  }
+
+  DsiPowerEnable(Config, FALSE);
+  MmioAndThenOr32(
+      Config->DsiBase + DSI_DPI_VIDEO_FORMAT,
+      ~DSI_VIDEO_FORMAT_MASK,
+      DSI_COLOR_CODE_24BIT);
+  MmioWrite32(
+      Config->DsiBase + DSI_VID_MODE_CFG,
+      Config->VideoModeType | DSI_VIDEO_LP_PORCH_ENABLE);
+  MmioWrite32(
+      Config->DsiBase + DSI_VIDEO_SIG_DELAY_CONFIG,
+      95 * HorizontalTotal * RatioX1000 / 100000);
+  MmioWrite32(
+      Config->DsiBase + DSI_VIDEO_LINE_TIME,
+      HorizontalTotal * RatioX1000 / 1000);
+  MmioWrite32(
+      Config->DsiBase + DSI_VIDEO_LINE_HBLK_TIME,
+      (Config->HBackPorch * RatioX1000 / 1000) |
+      ((Config->HSync * RatioX1000 / 1000) << 16));
+  MmioWrite32(
+      Config->DsiBase + DSI_VIDEO_VBLK_LINES,
+      Config->VFrontPorch | (Config->VBackPorch << 10) |
+      (Config->VSync << 20));
+  MmioWrite32(Config->DsiBase + DSI_VIDEO_VACTIVE_LINES, Config->Height);
+
+  TimeoutCount = HorizontalTotal * Config->Height +
+      (2 * DSI_RGB888_BYTES_PER_PIXEL_X100) / 100;
+  for (TimeoutDivider = 0x80;
+       (TimeoutDivider < TimeoutCount) && (TimeoutDivider > 2);
+       TimeoutDivider--) {
+    if ((TimeoutCount % TimeoutDivider) == 0) {
+      MmioWrite32(
+          Config->DsiBase + DSI_TIMEOUT_CNT_CLK_CONFIG,
+          TimeoutDivider);
+      MmioWrite32(
+          Config->DsiBase + DSI_LRX_H_TO_CONFIG,
+          TimeoutCount / TimeoutDivider);
+      MmioWrite32(
+          Config->DsiBase + DSI_HTX_TO_CONFIG,
+          TimeoutCount / TimeoutDivider);
+      break;
+    }
+  }
+
+  MmioWrite32(
+      Config->DsiBase + DSI_VIDEO_PKT_CONFIG,
+      VideoSize | (Chunks << 16));
+  MmioWrite32(
+      Config->DsiBase + DSI_VIDEO_NULLPKT_SIZE,
+      NullPacketSize);
+  MmioWrite32(Config->DsiBase + DSI_MASK_PROTOCOL_INT, 0xFFFFFFFFU);
+  MmioWrite32(Config->DsiBase + DSI_MASK_INTERNAL_INT, 0xFFFFFFFFU);
+  DsiPowerEnable(Config, TRUE);
+  return EFI_SUCCESS;
 }
 
 STATIC
@@ -153,8 +294,12 @@ SprdDsiInitialize(IN CONST SPRD_DISPLAY_CONFIG *Config)
   MmioWrite32(Config->DsiBase + DSI_PHY_CLKLANE_TIME_CONFIG, ClockTiming);
   DsiPowerEnable(Config, TRUE);
 
-  DsiConfigureEdpi(Config);
-  return EFI_SUCCESS;
+  if (!Config->VideoMode) {
+    DsiConfigureEdpi(Config);
+    return EFI_SUCCESS;
+  }
+
+  return DsiConfigureDpi(Config);
 }
 
 VOID
@@ -167,7 +312,9 @@ SprdDsiEnableLpCommands(IN CONST SPRD_DISPLAY_CONFIG *Config)
 VOID
 SprdDsiPrepareForTransfer(IN CONST SPRD_DISPLAY_CONFIG *Config)
 {
-  MmioWrite32(Config->DsiBase + DSI_MODE_CFG, DSI_MODE_COMMAND);
+  MmioWrite32(
+      Config->DsiBase + DSI_MODE_CFG,
+      Config->VideoMode ? DSI_MODE_VIDEO : DSI_MODE_COMMAND);
   DsiPowerEnable(Config, FALSE);
   gBS->Stall(100);
   DsiPowerEnable(Config, TRUE);

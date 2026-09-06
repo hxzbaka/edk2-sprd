@@ -207,7 +207,8 @@ STATIC EFI_STATUS EFIAPI DisplayBlt(
       DestinationX, DestinationY, Width, Height, Delta);
 
   if (!RETURN_ERROR(Status) && BltOperation != EfiBltVideoToBltBuffer &&
-      !FixedPcdGetBool(PcdDisplayCmdMode)) {
+      (!FixedPcdGetBool(PcdDisplayCmdMode) ||
+       FixedPcdGetBool(PcdDisplaySwitchToVideoMode))) {
     WriteBackInvalidateDataCacheRange(
         (VOID *)(UINTN)mDisplay.Mode->FrameBufferBase,
         mDisplay.Mode->FrameBufferSize);
@@ -357,7 +358,8 @@ EFI_STATUS EFIAPI SimpleFbDxeInitialize(
   }
 
   // Configure TE and send the initial frame.
-  if (FixedPcdGetBool(PcdDisplayCmdMode)) {
+  if (FixedPcdGetBool(PcdDisplayCmdMode) &&
+      !FixedPcdGetBool(PcdDisplaySwitchToVideoMode)) {
     Status = gBS->LocateProtocol(
         &gHardwareInterruptProtocolGuid, NULL, (VOID **)&mHardwareInterrupt);
     if (EFI_ERROR(Status)) {

@@ -29,8 +29,16 @@
   gSprdTokenSpaceGuid.PcdPanelResetGpio|50
   gSprdTokenSpaceGuid.PcdReconfigureDisplay|TRUE
 
-  # Command mode
+  # Video burst mode
   gSprdTokenSpaceGuid.PcdDisplayCmdMode|TRUE
+  gSprdTokenSpaceGuid.PcdDisplaySwitchToVideoMode|TRUE
+  gSprdTokenSpaceGuid.PcdDisplayVideoModeType|2
+  gSprdTokenSpaceGuid.PcdDisplayHSync|4
+  gSprdTokenSpaceGuid.PcdDisplayHBackPorch|32
+  gSprdTokenSpaceGuid.PcdDisplayHFrontPorch|32
+  gSprdTokenSpaceGuid.PcdDisplayVSync|4
+  gSprdTokenSpaceGuid.PcdDisplayVBackPorch|12
+  gSprdTokenSpaceGuid.PcdDisplayVFrontPorch|18
   gSprdTokenSpaceGuid.PcdDisplayHFlip|FALSE
   gSprdTokenSpaceGuid.PcdDpuBaseAddress|0x20300000
   gSprdTokenSpaceGuid.PcdDpuCtrlReg|0x0004
