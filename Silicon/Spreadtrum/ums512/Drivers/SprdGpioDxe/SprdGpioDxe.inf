@@ -19,6 +19,7 @@
   UefiBootServicesTableLib
   IoLib
   BaseLib
+  TimerLib
   DebugLib
 
 [Protocols]

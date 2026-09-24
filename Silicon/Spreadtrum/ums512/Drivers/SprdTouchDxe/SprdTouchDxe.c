@@ -1,3 +1,9 @@
+/** @file
+  Spreadtrum UMS512 Synaptics/S3908 touch DXE driver.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
+
 #include <Uefi.h>
 
 #include <Library/BaseLib.h>

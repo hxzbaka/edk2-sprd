@@ -23,7 +23,6 @@
 [Protocols]
   gEfiSimpleTextInProtocolGuid
   gEfiDevicePathProtocolGuid
-  gEfiClockProtocolGuid
   gSprdGpioProtocolGuid
 
 [Guids]

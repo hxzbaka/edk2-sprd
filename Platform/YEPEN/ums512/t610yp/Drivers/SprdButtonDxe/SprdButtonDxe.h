@@ -1,3 +1,9 @@
+/** @file
+  Spreadtrum UMS512 button-driver definitions.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
+
 #ifndef _SPRD_BUTTON_DXE_H_
 #define _SPRD_BUTTON_DXE_H_
 

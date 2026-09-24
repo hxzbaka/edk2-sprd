@@ -1,3 +1,9 @@
+/** @file
+  Platform-independent declarations for the UMS512 touch controller.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
+
 #ifndef SPRD_UMS512_TCM_H
 #define SPRD_UMS512_TCM_H
 

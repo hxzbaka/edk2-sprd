@@ -3,19 +3,17 @@ Device (EMMC)
     Name (_HID, "SPRD7140")
     Name (_UID, Zero)
     Name (_CCA, Zero)
+
     Method (_STA, 0, NotSerialized)
     {
         Return (0x0F)
     }
-    // Windows PnP uses the standard ACPI _RMV method for the removable-media
-    // characteristic. The Linux-compatible _DSD non-removable property alone
-    // does not affect this classification on Windows.
+
     Method (_RMV, 0, NotSerialized)
     {
         Return (Zero)
     }
-    // SDPORT maps ACPI child _ADR values to controller slots.  Per the ACPI
-    // SD host convention, 0x08 identifies the soldered eMMC slot.
+
     Device (SLOT)
     {
         Method (_ADR, 0, NotSerialized)

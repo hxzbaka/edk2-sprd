@@ -171,7 +171,7 @@ SMBIOS_TABLE_TYPE17 mMemDevInfoType17 = {
     0,      // MemoryArrayHandle (filled at runtime)
     0xFFFE,
     64, 64,     // TotalWidth, DataWidth
-    0x2000,     // Size: 8 GB
+    0x1000,     // Size: 4096 MB (4 GiB)
     MemoryFormFactorRowOfChips,
     0,
     1,          // DeviceLocator "Builtin"

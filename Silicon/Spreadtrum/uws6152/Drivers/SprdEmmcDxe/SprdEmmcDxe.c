@@ -1,6 +1,7 @@
 /** @file
   SPRD eMMC Block I/O Driver
 
+  Copyright (c) 2026, kanadenadi. All rights reserved.<BR>
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
   Copyright (c) 2026, atlas4381. All rights reserved.<BR>
 

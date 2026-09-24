@@ -29,5 +29,8 @@
   gEfiBlockIoProtocolGuid
   gEfiDevicePathProtocolGuid
 
+[Guids]
+  gEfiEventExitBootServicesGuid
+
 [Depex]
   TRUE

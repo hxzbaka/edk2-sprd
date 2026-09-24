@@ -1,11 +1,12 @@
 # SoC adaptation status
+UEFI:
 
-| SoC | Board | GIC/Timer | FB | EMMC/UFS | Acpi | GPIO | I2C | Boot |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| SC9832E | sp9832e_1h10 | √ | √ | √ | × | √ | × |Linux |
-| UMS512 | ums512_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
-| UWS6152 | uws6152_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
-| UD710 | ud710_1h10 | √ | √ | √ | √ | √ | × |Linux/Win |
+| SoC | Board | GIC/Timer | Display | EMMC/UFS | Acpi | GPIO | I2C | Pmic | Usb | Otg | Charger | Boot |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SC9832E | sp9832e_1h10 | √ | √ | √ | × | √ | × | × | × | × | × | Linux |
+| UMS512 | ums512_1h10 | √ | √ | √ | √ | √ | √ | √ | × | × | √ | Linux/Win |
+| UWS6152 | uws6152_1h10 | √ | √ | √ | √ | √ | × | × | × | × | × | Linux/Win |
+| UD710 | ud710_1h10 | √ | √ | √ | √ | √ | × | × | × | × | × | Linux/Win |
 
 # Device adaptation
 

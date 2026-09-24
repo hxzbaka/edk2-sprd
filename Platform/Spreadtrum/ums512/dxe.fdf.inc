@@ -1,6 +1,7 @@
 # Socs Drivers inf
 
   INF Silicon/Spreadtrum/ums512/Drivers/SprdDisplayDxe/SprdDisplayDxe.inf
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdClockDxe/SprdClockDxe.inf
 
   INF Silicon/Spreadtrum/ums512/Drivers/SprdChipInfoDxe/SprdChipInfoDxe.inf
 
@@ -9,8 +10,10 @@
   INF Silicon/Spreadtrum/ums512/Drivers/SprdGpioDxe/SprdGpioDxe.inf
 
   INF Silicon/Spreadtrum/ums512/Drivers/SprdI2CDxe/SprdI2CDxe.inf
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdPmicDxe/SprdPmicDxe.inf
 
   INF Silicon/Spreadtrum/ums512/Drivers/SprdTouchDxe/SprdTouchDxe.inf
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdChargerDxe/SprdChargerDxe.inf
 
 #  INF Silicon/Spreadtrum/ums512/Drivers/SprdButtonDxe/SprdButtonDxe.inf
 
@@ -23,7 +26,7 @@
 #
 # Usb Driver
 #
-#  INF Silicon/Spreadtrum/ums512/Drivers/SprdUsbInitDxe/SprdUsbInitDxe.inf
+  INF Silicon/Spreadtrum/ums512/Drivers/SprdUsbInitDxe/SprdUsbInitDxe.inf
 #  INF Silicon/Spreadtrum/ums512/Drivers/SprdMusbDxe/SprdMusbDxe.inf
 #  INF Silicon/Spreadtrum/ums512/Drivers/SprdUsbDxe/SprdUsbDxe.inf
 # USB Mass Storage

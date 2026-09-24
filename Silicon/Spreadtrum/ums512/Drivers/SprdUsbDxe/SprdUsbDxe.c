@@ -1,9 +1,10 @@
 /** @file
-  Requests normal UEFI USB bus binding after all DXE USB drivers are present.
+  Requests normal UEFI USB bus binding after DXE USB drivers are present.
 
-  This driver intentionally does not parse HID reports.  Once MUSB publishes
-  EFI_USB2_HC_PROTOCOL, MdeModulePkg/Bus/Usb/UsbBusDxe enumerates devices and
-  its USB HID class drivers publish SimplePointer for a mouse.
+  This driver does not parse HID reports. Once MUSB publishes
+  EFI_USB2_HC_PROTOCOL, UsbBusDxe performs device enumeration.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
 **/
 
 #include <Uefi.h>

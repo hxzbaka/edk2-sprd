@@ -28,10 +28,6 @@ SprdSdhciReset (UINT8 Mask)
   UINT32 Timeout;
   UINT8  Val;
 
-  Val = MmioRead8 (SDHCI_BASE + SDHCI_SOFTWARE_RESET);
-  if (Val & SDHCI_HW_RESET_CARD) {
-    Mask |= SDHCI_HW_RESET_CARD;
-  }
   MmioWrite8 (SDHCI_BASE + SDHCI_SOFTWARE_RESET, Mask);
 
   for (Timeout = 0; Timeout < 100; Timeout++) {

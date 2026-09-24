@@ -21,12 +21,19 @@
   IoLib
   MemoryAllocationLib
   TimerLib
+  PcdLib
   UefiBootServicesTableLib
   UefiDriverEntryPoint
 
 [Protocols]
   gSprdAonI2cProtocolGuid
   gSprdUsbInitProtocolGuid
+
+[Guids]
+  gEfiEventExitBootServicesGuid
+
+[Pcd]
+  gSprdTokenSpaceGuid.PcdSprdUsbOtgEnable
 
 [Depex]
   gSprdAonI2cProtocolGuid

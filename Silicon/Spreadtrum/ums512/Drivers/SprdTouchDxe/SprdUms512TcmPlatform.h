@@ -1,3 +1,9 @@
+/** @file
+  UMS512 touch-controller platform definitions.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
+
 #ifndef SPRD_UMS512_TCM_PLATFORM_H
 #define SPRD_UMS512_TCM_PLATFORM_H
 

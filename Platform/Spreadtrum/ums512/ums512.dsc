@@ -23,8 +23,9 @@
 !include Silicon/Spreadtrum/SprdPkg/SprdCommonDsc.inc
 
 [PcdsFixedAtBuild.common]
+  gSprdTokenSpaceGuid.PcdSprdUsbOtgEnable|FALSE
   gArmTokenSpaceGuid.PcdSystemMemoryBase|0x80000000         # Starting address
-  gArmTokenSpaceGuid.PcdSystemMemorySize|0xFDFA0000         # Limit to 4GB Size here
+  gArmTokenSpaceGuid.PcdSystemMemorySize|0xFDFA0000         # 4GiB profile boundary
 
   gArmTokenSpaceGuid.PcdCpuVectorBaseAddress|0x9ff8c000
   gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz|26000000

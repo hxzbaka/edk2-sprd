@@ -1,12 +1,14 @@
 /** @file
   UMS512/SharkL5Pro AON hardware I2C DXE driver.
 
-  t610.dts assigns charger@6a to this controller.  The ARM hardware channel
-  supports a two-byte register write, or a one-byte register address followed
-  by a one/two-byte read.  Those are the transactions used by FAN54015.
+  t610.dts assigns charger@6a to this controller. The ARM hardware channel
+  supports the register transactions used by FAN54015.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
 **/
 
 #include <SprdUsb.h>
+#include <Protocol/SprdI2cBus.h>
 #include <Library/DebugLib.h>
 
 
@@ -24,9 +26,24 @@
 #define I2C_ARM_RD_DATA         0x140U
 #define I2C_ARM_DEBUG1          0x148U
 
+#define AP_I2C_ADDR_CFG         0x004U
+#define AP_I2C_COUNT            0x008U
+#define AP_I2C_RX               0x00CU
+#define AP_I2C_TX               0x010U
+
 #define I2C_DVD_OPT             BIT8
 #define I2C_EN                  BIT2
 #define I2C_INT_EN              BIT1
+#define I2C_START               BIT0
+#define I2C_STP_EN              BIT20
+#define I2C_FIFO_AF_LVL_MASK   (0xFU << 16)
+#define I2C_FIFO_AE_LVL_MASK   (0xFU << 12)
+#define I2C_FIFO_AF_LVL        (15U << 16)
+#define I2C_FIFO_AE_LVL        (4U << 12)
+#define I2C_INT                 BIT2
+#define I2C_MODE                BIT3
+#define I2C_FULL_INTEN          BIT10
+#define I2C_EMPTY_INTEN         BIT9
 #define I2C_RX_ACK              BIT1
 #define I2C_RST                 BIT0
 #define I2C_ARM_RD_BUSY         BIT31
@@ -43,8 +60,10 @@ typedef struct {
   UINT32                    Signature;
   EFI_I2C_MASTER_PROTOCOL  I2c;
   SPRD_AON_I2C_PROTOCOL    AonI2c;
+  SPRD_I2C_BUS_PROTOCOL    BusI2c;
   EFI_HANDLE               Handle;
   EFI_PHYSICAL_ADDRESS     Base;
+  UINT32                    Bus;
 } SPRD_I2C_DEVICE;
 
 STATIC
@@ -103,6 +122,24 @@ SprdI2cWriteRegister (
     return EFI_DEVICE_ERROR;
   }
   return SprdI2cCheckAck (Device);
+}
+
+STATIC EFI_STATUS
+SprdI2cWriteBuffer (
+  IN SPRD_I2C_DEVICE *Device,
+  IN UINTN SlaveAddress,
+  IN UINT8 Register,
+  IN CONST UINT8 *Buffer,
+  IN UINTN Length
+  )
+{
+  UINTN Index;
+  EFI_STATUS Status;
+  for (Index = 0; Index < Length; Index++) {
+    Status = SprdI2cWriteRegister (Device, SlaveAddress, (UINT8)(Register + Index), Buffer[Index]);
+    if (EFI_ERROR (Status)) return Status;
+  }
+  return EFI_SUCCESS;
 }
 
 STATIC
@@ -200,19 +237,19 @@ SprdI2cStartRequest (
   SlaveAddress, RequestPacket->OperationCount));
   if (RequestPacket->OperationCount == 1) {
     First = &RequestPacket->Operation[0];
-    if (((First->Flags & I2C_FLAG_READ) != 0) || (First->LengthInBytes != 2) ||
-        (First->Buffer == NULL)) {
+    if (((First->Flags & I2C_FLAG_READ) != 0) || (First->LengthInBytes < 2) ||
+        (First->LengthInBytes > 32) || (First->Buffer == NULL)) {
       Status = EFI_UNSUPPORTED;
     } else {
-      Status = SprdI2cWriteRegister (Device, SlaveAddress, ((UINT8 *)First->Buffer)[0],
-                 ((UINT8 *)First->Buffer)[1]);
+      Status = SprdI2cWriteBuffer (Device, SlaveAddress, ((UINT8 *)First->Buffer)[0],
+                 (UINT8 *)First->Buffer + 1, First->LengthInBytes - 1);
     }
   } else if (RequestPacket->OperationCount == 2) {
     First = &RequestPacket->Operation[0];
     if (((First->Flags & I2C_FLAG_READ) != 0) || (First->LengthInBytes != 1) ||
         (First->Buffer == NULL) || ((RequestPacket->Operation[1].Flags & I2C_FLAG_READ) == 0) ||
         (RequestPacket->Operation[1].LengthInBytes == 0) ||
-        (RequestPacket->Operation[1].LengthInBytes > 2) ||
+        (RequestPacket->Operation[1].LengthInBytes > 32) ||
         (RequestPacket->Operation[1].Buffer == NULL)) {
       Status = EFI_UNSUPPORTED;
     } else {
@@ -236,6 +273,114 @@ Done:
   }
   return Status;
 }
+
+/* AP I2C3 polling path used by the touch controller. */
+STATIC
+EFI_STATUS
+SprdApI2cTransfer (
+  IN SPRD_I2C_DEVICE *Device,
+  IN UINTN SlaveAddress,
+  IN EFI_I2C_OPERATION *Operation
+  )
+{
+  UINTN Index;
+  UINTN Remaining;
+  UINTN Chunk;
+  UINT32 Control;
+  UINT32 Status;
+  UINTN Elapsed;
+  BOOLEAN Read;
+
+  if (SlaveAddress > 0x7fU || Operation == NULL || Operation->Buffer == NULL ||
+      Operation->LengthInBytes == 0U) {
+    return EFI_INVALID_PARAMETER;
+  }
+  Read = ((Operation->Flags & I2C_FLAG_READ) != 0U);
+  Remaining = Operation->LengthInBytes;
+  SprdI2cResetHardware (Device);
+  MmioWrite32 ((UINTN)Device->Base + AP_I2C_ADDR_CFG, (UINT32)SlaveAddress << 1);
+  MmioWrite32 ((UINTN)Device->Base + AP_I2C_COUNT, (UINT32)Operation->LengthInBytes);
+  Control = MmioRead32 ((UINTN)Device->Base + I2C_CTL);
+  Control &= ~(I2C_MODE | I2C_STP_EN | I2C_FULL_INTEN |
+               I2C_EMPTY_INTEN | I2C_START);
+  Control |= I2C_INT_EN;
+  if (Read) {
+    Control |= I2C_MODE | I2C_FULL_INTEN;
+  } else {
+    /* This is the final (and only) message, so generate STOP. */
+    Control |= I2C_STP_EN;
+    Chunk = MIN (Remaining, 12U);
+    for (Index = 0; Index < Chunk; Index++) {
+      MmioWrite8 ((UINTN)Device->Base + AP_I2C_TX, ((UINT8 *)Operation->Buffer)[Index]);
+    }
+    Remaining -= Chunk;
+    if (Remaining != 0U) {
+      Control |= I2C_EMPTY_INTEN;
+    }
+  }
+  MmioWrite32 ((UINTN)Device->Base + I2C_CTL, Control | I2C_START);
+  for (Elapsed = 0; Elapsed < 100000U; Elapsed++) {
+    Status = MmioRead32 ((UINTN)Device->Base + I2C_STATUS);
+    if ((Status & I2C_RX_ACK) != 0U) {
+      SprdI2cResetHardware (Device);
+      return EFI_NO_RESPONSE;
+    }
+    if ((Status & I2C_INT) != 0U) {
+      if (Read) {
+        Chunk = MIN (Remaining, 15U);
+        for (Index = 0; Index < Chunk; Index++) {
+          ((UINT8 *)Operation->Buffer)[Operation->LengthInBytes - Remaining + Index] = MmioRead8 ((UINTN)Device->Base + AP_I2C_RX);
+        }
+        Remaining -= Chunk;
+      } else if (Remaining != 0U) {
+        Chunk = MIN (Remaining, 12U);
+        for (Index = 0; Index < Chunk; Index++) {
+          MmioWrite8 ((UINTN)Device->Base + AP_I2C_TX, ((UINT8 *)Operation->Buffer)[Operation->LengthInBytes - Remaining + Index]);
+        }
+        Remaining -= Chunk;
+      }
+      MmioWrite32 ((UINTN)Device->Base + I2C_STATUS, Status & ~BIT2);
+      if (Remaining == 0U) {
+        MmioAnd32 ((UINTN)Device->Base + I2C_CTL, ~I2C_START);
+        return EFI_SUCCESS;
+      }
+    }
+    MicroSecondDelay (10);
+  }
+  SprdI2cResetHardware (Device);
+  return EFI_TIMEOUT;
+}
+
+STATIC
+EFI_STATUS
+EFIAPI
+SprdApI2cStartRequest (
+  IN CONST EFI_I2C_MASTER_PROTOCOL *This,
+  IN UINTN SlaveAddress,
+  IN EFI_I2C_REQUEST_PACKET *RequestPacket,
+  IN EFI_EVENT Event OPTIONAL,
+  OUT EFI_STATUS *I2cStatus OPTIONAL
+  )
+{
+  SPRD_I2C_DEVICE *Device;
+  EFI_STATUS Status;
+
+  if (RequestPacket == NULL || RequestPacket->OperationCount != 1U) {
+    Status = EFI_UNSUPPORTED;
+  } else {
+    Device = CR (This, SPRD_I2C_DEVICE, I2c, SPRD_I2C_DEVICE_SIGNATURE);
+    Status = SprdApI2cTransfer (Device, SlaveAddress, &RequestPacket->Operation[0]);
+  }
+  if (I2cStatus != NULL) {
+    *I2cStatus = Status;
+  }
+  if (Event != NULL) {
+    gBS->SignalEvent (Event);
+    return EFI_SUCCESS;
+  }
+  return Status;
+}
+
 
 STATIC
 VOID
@@ -267,6 +412,27 @@ SprdI2cConfigureHardware (
     Device->Base, I2C_BUS_FREQUENCY));
 }
 
+STATIC
+VOID
+SprdApI2cConfigureHardware (
+  IN SPRD_I2C_DEVICE *Device
+  )
+{
+  /* AP_APB I2C3 enable and 26 MHz source, matching t610w.dts i2c@70600000. */
+  MmioOr32 (0x71000000U, BIT12);
+  MmioWrite32 ((UINTN)Device->Base + I2C_CTL, I2C_DVD_OPT);
+  MmioWrite32 ((UINTN)Device->Base + I2C_ADDR_DVD0, 0x000C0012U);
+  MmioWrite32 ((UINTN)Device->Base + I2C_ADDR_DVD1, 0U);
+  MmioWrite32 ((UINTN)Device->Base + I2C_ADDR_STA0_DVD, 15U);
+  MmioAnd32 ((UINTN)Device->Base + I2C_CTL,
+             ~(I2C_FIFO_AF_LVL_MASK | I2C_FIFO_AE_LVL_MASK));
+  MmioOr32 ((UINTN)Device->Base + I2C_CTL,
+            I2C_FIFO_AF_LVL | I2C_FIFO_AE_LVL);
+  MmioAnd32 ((UINTN)Device->Base + I2C_STATUS, ~I2C_INT);
+  MmioOr32 ((UINTN)Device->Base + I2C_CTL, I2C_EN | I2C_INT_EN);
+  SprdI2cResetHardware (Device);
+}
+
 EFI_STATUS
 EFIAPI
 SprdI2CDxeEntryPoint (
@@ -276,12 +442,14 @@ SprdI2CDxeEntryPoint (
 {
   EFI_STATUS       Status;
   SPRD_I2C_DEVICE  *Device;
+  SPRD_I2C_DEVICE  *ApDevice;
 
   Device = AllocateZeroPool (sizeof (*Device));
   if (Device == NULL) {
     return EFI_OUT_OF_RESOURCES;
   }
   Device->Base = SPRD_AON_HW_I2C_BASE;
+  Device->Bus = SPRD_I2C_BUS_AON0;
   Device->Signature = SPRD_I2C_DEVICE_SIGNATURE;
   DEBUG ((DEBUG_INFO, "SPRD-I2C: starting AON I2C DXE\n"));
   SprdI2cConfigureHardware (Device);
@@ -289,9 +457,12 @@ SprdI2CDxeEntryPoint (
   Device->I2c.Reset = SprdI2cReset;
   Device->I2c.StartRequest = SprdI2cStartRequest;
   Device->AonI2c.I2c = &Device->I2c;
+  Device->BusI2c.Bus = Device->Bus;
+  Device->BusI2c.I2c = &Device->I2c;
   Status = gBS->InstallMultipleProtocolInterfaces (&Device->Handle,
                   &gEfiI2cMasterProtocolGuid, &Device->I2c,
                   &gSprdAonI2cProtocolGuid, &Device->AonI2c,
+                  &gSprdI2cBusProtocolGuid, &Device->BusI2c,
                   NULL);
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "SPRD-I2C: protocol installation failed: %r\n", Status));
@@ -299,5 +470,27 @@ SprdI2CDxeEntryPoint (
   } else {
     DEBUG ((DEBUG_INFO, "SPRD-I2C: EFI_I2C_MASTER_PROTOCOL installed\n"));
   }
+
+  /* Publish AP I2C3 separately; consumers select it through SPRD_I2C_BUS_AP3. */
+  ApDevice = AllocateZeroPool (sizeof (*ApDevice));
+  if (ApDevice == NULL) return EFI_OUT_OF_RESOURCES;
+  ApDevice->Base = 0x70600000U;
+  ApDevice->Bus = SPRD_I2C_BUS_AP3;
+  ApDevice->Signature = SPRD_I2C_DEVICE_SIGNATURE;
+  SprdApI2cConfigureHardware (ApDevice);
+  ApDevice->I2c.SetBusFrequency = SprdI2cSetBusFrequency;
+  ApDevice->I2c.Reset = SprdI2cReset;
+  ApDevice->I2c.StartRequest = SprdApI2cStartRequest;
+  ApDevice->BusI2c.Bus = ApDevice->Bus;
+  ApDevice->BusI2c.I2c = &ApDevice->I2c;
+  Status = gBS->InstallMultipleProtocolInterfaces (&ApDevice->Handle,
+                  &gEfiI2cMasterProtocolGuid, &ApDevice->I2c,
+                  &gSprdI2cBusProtocolGuid, &ApDevice->BusI2c,
+                  NULL);
+  if (EFI_ERROR (Status)) {
+    FreePool (ApDevice);
+    return Status;
+  }
+  DEBUG ((DEBUG_INFO, "SPRD-I2C: AP3 I2C at 0x%lx installed\n", ApDevice->Base));
   return Status;
 }

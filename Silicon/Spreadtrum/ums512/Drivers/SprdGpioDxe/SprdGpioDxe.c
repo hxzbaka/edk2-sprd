@@ -1,16 +1,17 @@
-/*-
- * SPDX-License-Identifier: BSD-2-Clause
- *
- * Copyright (c) 2026 hxzbaka
- *
- * Gpio/Adi/EIC/PMIC driver for Spreadtrum UMS512 (SharkL5Pro)
- */
+/** @file
+  GPIO, ADI, EIC, and PMIC-EIC driver for Spreadtrum UMS512.
+
+  SPDX-License-Identifier: BSD-2-Clause
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
 
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
 #include <Library/IoLib.h>
 #include <Library/DebugLib.h>
+#include <Library/TimerLib.h>
 
 #include "SprdAdi.h"
 #include <Protocol/SprdGpioProtocol.h>
@@ -190,13 +191,24 @@ PmicEicRequest (
   )
 {
   UINT16 Mask;
+  UINT16 NewMask;
 
   if (Eic >= 16) {
     return EFI_INVALID_PARAMETER;
   }
-  Mask = AdiRead (PMIC_EIC_BASE + REG_DMSK);
-  Mask |= (UINT16)(1U << Eic);
-  AdiWrite (PMIC_EIC_BASE + REG_DMSK, Mask);
+  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DMSK, &Mask)) {
+    return EFI_DEVICE_ERROR;
+  }
+  NewMask = (UINT16)(Mask | (UINT16)(1U << Eic));
+  AdiWrite (PMIC_EIC_BASE + REG_DMSK, NewMask);
+  MicroSecondDelay (1);
+
+  /* Confirm that the requested bit reached the PMIC; retry once if needed. */
+  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DMSK, &Mask) ||
+      (Mask & (UINT16)(1U << Eic)) == 0) {
+    AdiWrite (PMIC_EIC_BASE + REG_DMSK, NewMask);
+    MicroSecondDelay (1);
+  }
   return EFI_SUCCESS;
 }
 
@@ -206,11 +218,22 @@ PmicEicGet (
   UINT32 Eic
   )
 {
+  UINT16 Data;
+
   if (Eic >= 16) {
     return FALSE;
   }
-  PmicEicRequest (Eic);
-  UINT16 Data = AdiRead (PMIC_EIC_BASE + REG_DATA);
+  if (EFI_ERROR (PmicEicRequest (Eic))) {
+    return FALSE;
+  }
+  MicroSecondDelay (3000);
+  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DATA, &Data)) {
+    return FALSE;
+  }
+  MicroSecondDelay (1);
+  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DATA, &Data)) {
+    return FALSE;
+  }
   return (BOOLEAN)((Data >> Eic) & 1);
 }
 

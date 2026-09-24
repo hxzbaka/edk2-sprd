@@ -17,7 +17,6 @@
 #include <Library/PcdLib.h>
 #include <Library/FdtParserLib.h>
 #include <Library/PlatformMemoryMapLib.h>
-#include <Library/SprdBootInitLib.h>
 
 #define SIZE_KB ((UINTN)(1024))
 #define SIZE_MB ((UINTN)(SIZE_KB * 1024))
@@ -86,8 +85,11 @@ EFI_STATUS
 EFIAPI
 MemoryPeim(IN EFI_PHYSICAL_ADDRESS UefiMemoryBase, IN UINT64 UefiMemorySize)
 {
-  PARM_MEMORY_REGION_DESCRIPTOR_EX MemoryDescriptorEx = GetPlatformMemoryMap();
-  ARM_MEMORY_REGION_DESCRIPTOR MemoryDescriptor[MAX_ARM_MEMORY_REGION_DESCRIPTOR_COUNT];
+
+  PARM_MEMORY_REGION_DESCRIPTOR_EX MemoryDescriptorEx =
+      GetPlatformMemoryMap();
+  ARM_MEMORY_REGION_DESCRIPTOR
+        MemoryDescriptor[MAX_ARM_MEMORY_REGION_DESCRIPTOR_COUNT];
   UINTN Index = 0;
   UINTN Node = 0;
   UINTN MemoryBase = 0;
@@ -96,75 +98,34 @@ MemoryPeim(IN EFI_PHYSICAL_ADDRESS UefiMemoryBase, IN UINT64 UefiMemorySize)
   DeviceMemoryAddHob Mem = Mem4G;
   UINT8 MemGB = 4;
   fdt *Fdt;
-  CHAR8  *CmdLine = NULL;
-  INT32  CmdLen = 0;
 
-Fdt = GetFdt();
+  Fdt = GetFdt();
+  ASSERT(Fdt != NULL);
 
-MemoryTotal = 0;
-Node = 0;
-
-if (Fdt == NULL) {
-  DEBUG((EFI_D_ERROR, "FDT is NULL, fallback to 4GB\n"));
-  MemoryTotal = 4ULL * SIZE_GB;
-} else {
-
-  while (fdt_get_memory(Fdt,
-                        (int)Node,
-                        (uint64_t*)&MemoryBase,
-                        (uint64_t*)&MemorySize)) {
-
-    if (MemorySize == 0) {
-      Node++;
-      continue;
-    }
-
+  while (fdt_get_memory(Fdt, (int)Node, (uint64_t*)&MemoryBase, (uint64_t*)&MemorySize)) {
     MemoryTotal += MemorySize;
-
-    DEBUG((EFI_D_INFO,
+    DEBUG((
+      EFI_D_INFO,
       "FDT Memory %-2d: 0x%016llx - 0x%016llx (0x%016llx)\n",
-      Node,
-      MemoryBase,
-      MemoryBase + MemorySize,
-      MemorySize));
-
+      Node, MemoryBase, (MemoryBase + MemorySize), MemorySize
+    ));
     Node++;
   }
 
-  if (MemoryTotal == 0) {
-    DEBUG((EFI_D_WARN, "FDT has no memory nodes, fallback to 4GB\n"));
-    MemoryTotal = 4ULL * SIZE_GB;
-  }
+  // Memory   Min    Max   Config
+  SIZE_MB_IN (3072,  4608, 4);
+  SIZE_MB_IN (5120,  6656, 6);
+  SIZE_MB_IN (7168,  8704, 8);
+  SIZE_MB_IN (9216, 10752, 10);
+  SIZE_MB_IN (11520, 12488, 12);
 
-  if (MemoryTotal > (4ULL * SIZE_GB)) {
-    DEBUG((EFI_D_WARN, "FDT memory > 4GB, clamp to 4GB\n"));
-    MemoryTotal = 4ULL * SIZE_GB;
-  }
-}
+  DEBUG((EFI_D_INFO, "FDT Memory Total: 0x%016lx (%d GiB)\n", MemoryTotal, MemoryTotal / SIZE_GB));
+  DEBUG((EFI_D_INFO, "Select Config: %d GiB\n", MemGB));
 
-  UINT64 MemoryTotalMB = MemoryTotal / SIZE_MB;
-  if (MemoryTotalMB < 1024) {
-    Mem = AddMem;
-    MemGB = 1;
-  } else if (MemoryTotalMB < 2048) {
-    Mem = AddMem;
-    MemGB = 2;
-  } else if (MemoryTotalMB < 3072) {
-    Mem = AddMem;
-    MemGB = 3;
-  } else {
-    SIZE_MB_IN (3072,  4608, 4);
-    SIZE_MB_IN (5120,  6656, 6);
-    SIZE_MB_IN (7168,  8704, 8);
-    SIZE_MB_IN (9216, 10752, 10);
-    SIZE_MB_IN (11520, 12488, 12);
-  }
-
-  DEBUG((EFI_D_INFO, "FDT Memory Total: 0x%016lx (%d MiB, %d GiB)\n",
-         MemoryTotal, MemoryTotal / SIZE_MB, MemoryTotal / SIZE_GB));
-  DEBUG((EFI_D_INFO, "Select Config: %d GiB, HobOption: %d\n", MemGB, Mem));
-
+  // Run through each memory descriptor
   while (MemoryDescriptorEx->Length != 0) {
+    if (MemoryDescriptorEx->MemoryType == EfiConventionalMemory)
+      MemoryTotal += MemoryDescriptorEx->Length;
     switch (MemoryDescriptorEx->HobOption) {
     case Mem4G:
     case Mem6G:
@@ -175,7 +136,7 @@ if (Fdt == NULL) {
         MemoryDescriptorEx++;
         continue;
       }
-      // fall through
+      // fallthrough
     case AddMem:
     case AddDev:
     case HobOnlyNoCacheSetting:
@@ -193,25 +154,30 @@ if (Fdt == NULL) {
 
   update:
     ASSERT(Index < MAX_ARM_MEMORY_REGION_DESCRIPTOR_COUNT);
+
     MemoryDescriptor[Index].PhysicalBase = MemoryDescriptorEx->Address;
     MemoryDescriptor[Index].VirtualBase  = MemoryDescriptorEx->Address;
     MemoryDescriptor[Index].Length       = MemoryDescriptorEx->Length;
     MemoryDescriptor[Index].Attributes   = MemoryDescriptorEx->ArmAttributes;
+
     Index++;
     MemoryDescriptorEx++;
   }
 
+  // Last one (terminator)
   ASSERT(Index < MAX_ARM_MEMORY_REGION_DESCRIPTOR_COUNT);
   MemoryDescriptor[Index].PhysicalBase = 0;
   MemoryDescriptor[Index].VirtualBase  = 0;
   MemoryDescriptor[Index].Length       = 0;
   MemoryDescriptor[Index].Attributes   = 0;
 
+  // Build Memory Allocation Hob
   DEBUG((EFI_D_INFO, "\nConfigure MMU In \n"));
   InitMmu(MemoryDescriptor);
   DEBUG((EFI_D_INFO, "Configure MMU Out \n"));
 
   if (FeaturePcdGet(PcdPrePiProduceMemoryTypeInformationHob)) {
+    // Optional feature that helps prevent EFI memory map fragmentation.
     BuildMemoryTypeInformationHob();
   }
 

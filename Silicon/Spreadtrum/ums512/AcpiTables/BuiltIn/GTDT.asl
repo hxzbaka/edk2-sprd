@@ -4,7 +4,7 @@
  * OEM ID    : SPRD
  * OEM Table : UMS512
  *
- * DTS 来源:
+ * DTS :
  *   timer { compatible = "arm,armv8-timer";
  *     interrupts = <0x01 0x0d 0x04   PPI13 → Secure EL1 Physical
  *                   0x01 0x0e 0x04   PPI14 → Non-Secure EL1 Physical
@@ -21,8 +21,6 @@
  *   Polarity     : 0 = Active-High
  *   Always On    : 0 (arm,no-tick-in-suspend)
  *
- * 编译: iasl gtdt_sprd.asl
- * 格式: [ByteLength]  FieldName : HexFieldValue
  */
 
 [0004]                          Signature : "GTDT"
@@ -35,7 +33,6 @@
 [0004]                    Asl Compiler ID : "INTL"
 [0004]              Asl Compiler Revision : 20220531
 
-/* 系统计数器控制寄存器基址: UMS512 不暴露 → 全F */
 [0008]              Counter Block Address : FFFFFFFFFFFFFFFF
 
 [0004]                           Reserved : 00000000
@@ -68,13 +65,10 @@
                                  Polarity : 0
                                 Always On : 0
 
-/* 系统计数器只读视图基址: UMS512 不暴露 → 全F */
 [0008]         Counter Read Block Address : FFFFFFFFFFFFFFFF
 
-/* 无平台计时器块 (无 SBSA Watchdog) */
 [0004]               Platform Timer Count : 00000000
 [0004]              Platform Timer Offset : 00000000
 
-/* Secure EL2 Timer (ACPI 6.3 新增): UMS512 不使用 */
 [0004]             Virtual EL2 Timer GSIV : 00000000
 [0004]            Virtual EL2 Timer Flags : 00000000

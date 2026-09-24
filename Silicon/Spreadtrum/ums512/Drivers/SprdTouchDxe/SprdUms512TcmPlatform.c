@@ -1,3 +1,9 @@
+/** @file
+  UMS512 touch-controller platform transport implementation.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
+
 #include <Uefi.h>
 
 #include <Library/BaseMemoryLib.h>

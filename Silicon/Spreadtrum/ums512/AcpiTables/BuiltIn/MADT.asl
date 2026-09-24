@@ -4,7 +4,7 @@
  * OEM ID    : SPRD
  * OEM Table : UMS512
  *
- * CPU 拓扑:
+ * CPU :
  *   Cluster0: 6x Cortex-A55  MPIDR 0x000~0x500
  *   Cluster1: 2x Cortex-A75  MPIDR 0x600~0x700
  *
@@ -16,8 +16,6 @@
  * PMU SPI: DTS <0x00 0x70..0x77 0x04>
  *   GSIV = intnum + 32  →  144(0x90)..151(0x97)
  *
- * 编译: iasl madt_sprd.asl
- * 格式: [ByteLength]  FieldName : HexFieldValue
  */
 
 [0004]                          Signature : "APIC"

@@ -4,7 +4,7 @@
  * OEM ID    : SPRD
  * OEM Table : UMS512
  *
- * DMA 控制器来源 (DTS):
+ * DTS:
  *
  *   DMA1 @ 0x20000000  (AP-AHB, sharkl5pro-dma)
  *     interrupts = <0x00 0x18 0x04>  SPI 24 → GSIV 56 (0x38)
@@ -18,7 +18,7 @@
  *     DMA Address Width = 32-bit (0x20)
  *     Max Block Size = 0x4000
  *
- * Resource Group 结构:
+ * Resource Group :
  *   RG1 (DMA1): ResourceGroup Header(24) + SharedInfo(28) +
  *               1 Controller(APMA) + 6 Channels(CHA0~CHA5) = 7 resources
  *               Length = 24+28+7*12 = 136 = 0x88
@@ -31,7 +31,6 @@
  *
  * Vendor ID: 'SPRD' stored LE = 0x44525053
  *
- * 编译: iasl csrt_sprd.asl
  */
 
 [0004]                          Signature : "CSRT"

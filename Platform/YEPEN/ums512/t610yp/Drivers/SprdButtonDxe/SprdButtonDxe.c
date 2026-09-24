@@ -1,11 +1,12 @@
-/*-
- * SPDX-License-Identifier: BSD-2-Clause
- *
- * Copyright (c) 2026 hxzbaka
- *
- * Physical button driver for Spreadtrum UMS512, providing SimpleTextIn via
- * hardware volume up/down and power keys.
- */
+/** @file
+  Physical button driver for Spreadtrum UMS512.
+
+  Provides SimpleTextIn through the hardware volume and power keys.
+
+  SPDX-License-Identifier: BSD-2-Clause
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+**/
 
 #include <Uefi.h>
 #include <Protocol/SimpleTextIn.h>
@@ -14,7 +15,6 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/DebugLib.h>
 #include <Library/BaseMemoryLib.h>
-#include <Protocol/EFIClock.h>
 #include <Protocol/SprdGpioProtocol.h>
 #include "SprdButtonDxe.h"
 
@@ -31,7 +31,6 @@ STATIC EFI_EVENT mWaitEvent;
 STATIC EFI_EVENT mTimerEvent;
 STATIC EFI_HANDLE mHandle = NULL;
 STATIC SPRD_GPIO_PROTOCOL *mGpio;
-STATIC EFI_CLOCK_PROTOCOL *ClockProtocol;
 
 #define PLAT_KEYPAD_DEVICE_GUID \
   {0xD7F58A0E, 0xBED2, 0x4B5A, {0xBB, 0x43, 0x8A, 0xB2, 0x3D, 0xD0, 0xE2, 0xB0}}
@@ -266,30 +265,6 @@ SprdButtonDxeEntry (
   mWaitEvent  = NULL;
   mTimerEvent = NULL;
 
-  // Try to enable necessary clocks (ADI for PMIC, EIC for debounce)
-  Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID**)&ClockProtocol);
-  if (!EFI_ERROR (Status)) {
-    UINTN ClkId;
-
-    Status = ClockProtocol->GetClockID (ClockProtocol, "adi", &ClkId);
-    if (!EFI_ERROR (Status)) {
-      ClockProtocol->EnableClock (ClockProtocol, ClkId);
-      DEBUG ((DEBUG_INFO, "[BTN] ADI clock enabled\n"));
-    } else {
-      DEBUG ((DEBUG_WARN, "[BTN] ADI clock not found\n"));
-    }
-
-    Status = ClockProtocol->GetClockID (ClockProtocol, "eic_debounce", &ClkId);
-    if (!EFI_ERROR (Status)) {
-      ClockProtocol->EnableClock (ClockProtocol, ClkId);
-      DEBUG ((DEBUG_INFO, "[BTN] EIC debounce clock enabled\n"));
-    } else {
-      DEBUG ((DEBUG_WARN, "[BTN] EIC debounce clock not found\n"));
-    }
-  } else {
-    DEBUG ((DEBUG_WARN, "[BTN] Clock protocol not found, assuming clocks already on\n"));
-  }
-
   // Create wait event for SimpleTextIn
   Status = gBS->CreateEvent (0, TPL_NOTIFY, NULL, NULL, &mWaitEvent);
   if (EFI_ERROR (Status)) {
@@ -308,6 +283,13 @@ SprdButtonDxeEntry (
   mGpio->DirectionInput (GPIO_KEY_POWER);
   mGpio->DirectionInput (GPIO_KEY_VOLUP);
   mGpio->DirectionInput (GPIO_KEY_VOLDOWN);
+
+  /*
+   * Match U-Boot's gpio-keys path.  AP GPIO124 is initialized by
+   * board_keypad_init(); PMIC EIC keys are opened by sprd_eic_request()
+   * immediately before sampling.  Open both PMIC inputs once here as well,
+   * so a reset-to-UEFI path does not depend on a previous scan having run.
+   */
 
   // Install SimpleTextIn and DevicePath
   mSimpleTextIn.WaitForKey = mWaitEvent;

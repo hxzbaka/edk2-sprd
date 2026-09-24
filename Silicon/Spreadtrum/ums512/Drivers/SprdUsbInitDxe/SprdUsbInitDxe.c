@@ -1,13 +1,16 @@
 /** @file
-  UMS512 USB2 PHY and OTG host initialisation.
+  UMS512 USB2 PHY and optional OTG initialization.
 
-  U-Boot leaves this controller in gadget mode.  This driver deliberately
-  disconnects gadget, resets the PHY, selects an A-device, and starts a new
-  host session before MUSB is exposed to the UEFI USB bus driver.
+  Charging is the default policy. OTG/host takeover is performed only when
+  PcdSprdUsbOtgEnable is TRUE.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
 **/
 
 #include <SprdUsb.h>
+#include <Guid/EventGroup.h>
 #include <Library/DebugLib.h>
+#include <Library/PcdLib.h>
 
 
 #ifndef PcdSprdUsbFan54015Address
@@ -29,6 +32,28 @@
 #define FAN54015_WATCHDOG_PERIOD_100NS  (5ULL * 1000ULL * 1000ULL * 10ULL)
 
 STATIC EFI_EVENT  mFan54015WatchdogEvent;
+STATIC EFI_EVENT  mExitBootServicesEvent;
+
+/* U-Boot's device-mode settings, restored before winload takes control. */
+STATIC UINT32      mSavedOtgPhyCtrl;
+STATIC UINT32      mSavedUtmiCtl1;
+STATIC UINT32      mSavedUtmiCtl2;
+STATIC UINT32      mSavedRegSelCfg0;
+STATIC UINT16      mSavedTypecMode;
+STATIC UINT16      mSavedTypecEnable;
+STATIC UINT16      mSavedTypecInterruptEnable;
+STATIC BOOLEAN     mDeviceStateSaved;
+STATIC BOOLEAN     mTypecStateSaved;
+STATIC BOOLEAN     mUsbHostActive;
+
+STATIC
+BOOLEAN
+SprdUsbOtgEnabled (
+  VOID
+  )
+{
+  return FixedPcdGetBool (PcdSprdUsbOtgEnable);
+}
 
 STATIC
 VOID
@@ -97,6 +122,11 @@ SprdTypecForceSource (
   DEBUG ((DEBUG_INFO,
     "SPRD-USB: SC2730 Type-C before host force: MODE=0x%04x EN=0x%04x INT_EN=0x%04x STATUS=0x%04x\n",
     Mode, Enable, InterruptEnable, Status));
+
+  mSavedTypecMode = Mode;
+  mSavedTypecEnable = Enable;
+  mSavedTypecInterruptEnable = InterruptEnable;
+  mTypecStateSaved = TRUE;
 
   Mode = (UINT16)((Mode & ~SC2730_TYPEC_MODE_MASK) | SC2730_TYPEC_MODE_SRC);
   Enable &= (UINT16)~SC2730_TYPEC_USB20_ONLY;
@@ -493,6 +523,98 @@ SprdMusbStartHostSession (
     MmioRead8 (Base + MUSB_TESTMODE), MmioRead8 (Base + MUSB_FADDR)));
 }
 
+STATIC
+VOID
+SprdMusbRestoreDeviceMode (
+  VOID
+  )
+{
+  UINTN  Base;
+  UINTN  Aon;
+  UINTN  Phy;
+  UINT8  Value;
+
+  Base = SPRD_MUSB_BASE;
+  Aon = SPRD_AON_APB_BASE;
+  Phy = SPRD_ANLG_PHY_G2_BASE;
+
+  /* Disconnect before revoking the host session and its VBUS ownership. */
+  MmioAnd8 (Base + MUSB_POWER, (UINT8)~MUSB_POWER_SOFTCONN);
+  MmioWrite8 (Base + MUSB_INTRUSBE, 0);
+  MmioWrite16 (Base + MUSB_INTRTXE, 0);
+  MmioWrite16 (Base + MUSB_INTRRXE, 0);
+  MmioWrite8 (Base + MUSB_TESTMODE, 0);
+  MmioWrite8 (Base + MUSB_FADDR, 0);
+
+  /* SESSION and HOST_FORCE_EN are the two state bits that select host mode. */
+  Value = MmioRead8 (Base + MUSB_DEVCTL);
+  MmioWrite8 (Base + MUSB_DEVCTL, Value & (UINT8)~MUSB_DEVCTL_SESSION);
+  MmioWrite8 (Base + MUSB_OTG_EXT_CSR, MUSB_CLEAR_TXBUFF | MUSB_CLEAR_RXBUFF);
+  MicroSecondDelay (10);
+  MmioWrite8 (Base + MUSB_OTG_EXT_CSR, 0);
+
+  /* Restore the U-Boot device-side PHY and Type-C policy, retaining clocks. */
+  if (mDeviceStateSaved) {
+    MmioWrite32 (Aon + AON_OTG_PHY_CTRL, mSavedOtgPhyCtrl);
+    MmioWrite32 (Phy + USB20_UTMI_CTL1, mSavedUtmiCtl1);
+    MmioWrite32 (Phy + USB20_UTMI_CTL2, mSavedUtmiCtl2);
+    MmioWrite32 (Phy + USB20_REG_SEL_CFG_0, mSavedRegSelCfg0);
+    if (mTypecStateSaved) {
+      MmioWrite32 (SPRD_SC2730_TYPEC_BASE + SC2730_TYPEC_MODE, mSavedTypecMode);
+      MmioWrite32 (SPRD_SC2730_TYPEC_BASE + SC2730_TYPEC_EN, mSavedTypecEnable);
+      MmioWrite32 (SPRD_SC2730_TYPEC_BASE + SC2730_TYPEC_INT_CLR,
+        SC2730_TYPEC_ATTACH_INT_EN | SC2730_TYPEC_DETACH_INT_EN);
+      MmioWrite32 (SPRD_SC2730_TYPEC_BASE + SC2730_TYPEC_INT_EN,
+        mSavedTypecInterruptEnable);
+    }
+  } else {
+    /* This fallback matches U-Boot's device PHY initialization, not host mode. */
+    MmioOr32 (Aon + AON_OTG_PHY_CTRL, AON_USB2_PHY_IDDIG);
+    MmioAnd32 (Phy + USB20_UTMI_CTL1, ~0x200U);
+    MmioAnd32 (Phy + USB20_UTMI_CTL2, ~(USB20_DPPULLDOWN | USB20_DMPULLDOWN));
+    MmioAnd32 (Phy + USB20_REG_SEL_CFG_0,
+      ~(USB20_REG_SEL_DPPULLDOWN | USB20_REG_SEL_DMPULLDOWN));
+  }
+
+  DEBUG ((DEBUG_INFO,
+    "SPRD-USB: restored MUSB device handoff: DEVCTL=0x%02x POWER=0x%02x OTG_EXT=0x%02x\n",
+    MmioRead8 (Base + MUSB_DEVCTL), MmioRead8 (Base + MUSB_POWER),
+    MmioRead8 (Base + MUSB_OTG_EXT_CSR)));
+}
+
+STATIC
+VOID
+EFIAPI
+SprdUsbExitBootServices (
+  IN EFI_EVENT  Event,
+  IN VOID       *Context
+  )
+{
+  SPRD_USB_INIT_PROTOCOL  *Init;
+  EFI_STATUS              Status;
+
+  (VOID)Event;
+  Init = (SPRD_USB_INIT_PROTOCOL *)Context;
+
+  if (mFan54015WatchdogEvent != NULL) {
+    (VOID)gBS->SetTimer (mFan54015WatchdogEvent, TimerCancel, 0);
+    (VOID)gBS->CloseEvent (mFan54015WatchdogEvent);
+    mFan54015WatchdogEvent = NULL;
+  }
+
+  /* Only an explicitly enabled OTG session owns VBUS and MUSB state. */
+  if (Init != NULL && mUsbHostActive) {
+    Status = Init->SetVbus (Init, FALSE);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_WARN, "SPRD-USB: unable to disable host VBUS at EBS: %r\n", Status));
+    }
+  }
+  if (mUsbHostActive) {
+    SprdMusbRestoreDeviceMode ();
+    mUsbHostActive = FALSE;
+  }
+}
+
 EFI_STATUS
 EFIAPI
 SprdUsbInitDxeEntryPoint (
@@ -511,7 +633,8 @@ SprdUsbInitDxeEntryPoint (
   }
 
   DEBUG ((DEBUG_INFO, "SPRD-USB: starting USB initialization DXE\n"));
-  SprdUsbPhyInit ();
+  DEBUG ((DEBUG_INFO, "SPRD-USB: OTG PCD=%u (default 0: charging mode)\n",
+    SprdUsbOtgEnabled ()));
   Init->MusbBase = SPRD_MUSB_BASE;
   Init->MusbSize = SPRD_MUSB_SIZE;
   Init->SetVbus  = SprdUsbSetVbus;
@@ -524,11 +647,40 @@ SprdUsbInitDxeEntryPoint (
     return Status;
   }
 
+  Status = gBS->CreateEventEx (
+                  EVT_NOTIFY_SIGNAL,
+                  TPL_NOTIFY,
+                  SprdUsbExitBootServices,
+                  Init,
+                  &gEfiEventExitBootServicesGuid,
+                  &mExitBootServicesEvent
+                  );
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "SPRD-USB: cannot register ExitBootServices handoff: %r\n", Status));
+    return Status;
+  }
+
   /*
     Make the board's CC controller advertise source before taking the MUSB
     core out of U-Boot gadget mode.  A USB-C OTG hub will otherwise retain
     its data switch even if FAN54015 is already supplying 5 V on VBUS.
   */
+  if (!SprdUsbOtgEnabled ()) {
+    DEBUG ((DEBUG_INFO, "SPRD-USB: OTG disabled; leaving VBUS to charger and skipping host session\n"));
+    return EFI_SUCCESS;
+  }
+
+  /* Do not touch USB MMIO at all in the default charging-only policy. */
+  mSavedOtgPhyCtrl = MmioRead32 (SPRD_AON_APB_BASE + AON_OTG_PHY_CTRL);
+  mSavedUtmiCtl1 = MmioRead32 (SPRD_ANLG_PHY_G2_BASE + USB20_UTMI_CTL1);
+  mSavedUtmiCtl2 = MmioRead32 (SPRD_ANLG_PHY_G2_BASE + USB20_UTMI_CTL2);
+  mSavedRegSelCfg0 = MmioRead32 (SPRD_ANLG_PHY_G2_BASE + USB20_REG_SEL_CFG_0);
+  mDeviceStateSaved = TRUE;
+
+  /* From this point the driver owns the host-side MUSB/Type-C state. */
+  SprdUsbPhyInit ();
+  mUsbHostActive = TRUE;
+
   if (!SprdTypecForceSource ()) {
     DEBUG ((DEBUG_WARN,
       "SPRD-USB: Type-C source is not attached; continuing for a later hot-plug\n"));

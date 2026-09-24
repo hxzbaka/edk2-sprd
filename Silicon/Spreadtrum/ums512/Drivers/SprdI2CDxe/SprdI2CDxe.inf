@@ -27,6 +27,7 @@
 [Protocols]
   gEfiI2cMasterProtocolGuid
   gSprdAonI2cProtocolGuid
+  gSprdI2cBusProtocolGuid
 
 [Depex]
   TRUE

@@ -380,7 +380,7 @@ SMBIOS_TABLE_TYPE16 mPhyMemArrayInfoType16 = {
     MemoryErrorCorrectionNone,      // MemoryErrorCorrection;          ///< The
                                     // enumeration value from
                                     // MEMORY_ERROR_CORRECTION.
-    0x800000,                       // MaximumCapacity;
+    0x400000,                       // 4 GiB, KiB
     0xFFFE,                         // MemoryErrorInformationHandle;
     1,                              // NumberOfMemoryDevices;
     0x00000000ULL,                  // ExtendedMaximumCapacity;
@@ -501,10 +501,12 @@ LogSmbiosData(
   // Append string pack
   Str = ((CHAR8 *)Record) + Record->Length;
 
-  for (Index = 0; StringPack[Index] != NULL; Index++) {
-    StringSize = AsciiStrSize(StringPack[Index]);
-    CopyMem(Str, StringPack[Index], StringSize);
-    Str += StringSize;
+  if (StringPack != NULL) {
+    for (Index = 0; StringPack[Index] != NULL; Index++) {
+      StringSize = AsciiStrSize(StringPack[Index]);
+      CopyMem(Str, StringPack[Index], StringSize);
+      Str += StringSize;
+    }
   }
 
   *Str         = 0;
@@ -605,7 +607,7 @@ PlatformSmbiosDriverEntryPoint(
 
   while (fdt_get_memory(Fdt, (int)Node, (uint64_t*)&MemoryBase, (uint64_t*)&MemorySize)) {
     mMemArrMapInfoType19.StartingAddress = RShiftU64(MemoryBase, 10);
-    mMemArrMapInfoType19.EndingAddress = mMemArrMapInfoType19.StartingAddress + RShiftU64(MemorySize, 10);
+    mMemArrMapInfoType19.EndingAddress = mMemArrMapInfoType19.StartingAddress + RShiftU64(MemorySize, 10) - 1;
     LogSmbiosData(
         (EFI_SMBIOS_TABLE_HEADER *)&mMemArrMapInfoType19,
         mMemArrMapInfoType19Strings, NULL);

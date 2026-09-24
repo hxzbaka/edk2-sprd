@@ -1,19 +1,21 @@
 /**
 @file
 Sprd Emmc Drivers for UEFI
-SDC->sprd,sdhc-r10
+SDC->sprd,sdhc-r11
 
-Copyright (c) 2026 kanadenadi
-hxzbaka
+Copyright (c) 2026, kanadenadi. All rights reserved.<BR>
+Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
 **/
 
 #include <Library/CacheMaintenanceLib.h>
 #include <Protocol/DevicePath.h>
+#include <Guid/EventGroup.h>
 #include "SprdEmmcDxe.h"
 
 STATIC EFI_BLOCK_IO_PROTOCOL  mBlockIo;
 STATIC EFI_BLOCK_IO_MEDIA     mMedia;
 STATIC EFI_HANDLE             mHandle = NULL;
+STATIC EFI_EVENT              mExitBootServicesEvent = NULL;
 STATIC UINT32                 mRca;
 STATIC ADMA2_DESC_32          *mAdmaDescTable = NULL;
 STATIC UINT8                  *mBounceBuffer  = NULL;
@@ -127,6 +129,7 @@ STATIC VOID
 AdmaSetHostCtrl (VOID)
 {
   UINT8  HostCtrl;
+  UINT16 HostCtrl2;
 
   HostCtrl  = MmioRead8 (SDHCI_BASE + SDHCI_HOST_CONTROL);
   HostCtrl &= ~(UINT8)SDHCI_CTRL_DMA_MASK;
@@ -135,6 +138,37 @@ AdmaSetHostCtrl (VOID)
   HostCtrl |= (UINT8)SDHCI_CTRL_ADMA2_32;
 
   MmioWrite8 (SDHCI_BASE + SDHCI_HOST_CONTROL, HostCtrl);
+  HostCtrl2 = MmioRead16 (SDHCI_BASE + SDHCI_HOST_CONTROL2);
+  HostCtrl2 &= (UINT16)~SDHCI_CTRL2_64BIT_ADDR;
+  MmioWrite16 (SDHCI_BASE + SDHCI_HOST_CONTROL2, HostCtrl2);
+}
+
+// Leave the controller quiescent before Windows takes ownership.  This is a
+// host reset only: the eMMC card remains selected and initialized, while no
+// outstanding DMA or interrupt can survive the DXE-to-OS handoff.
+STATIC
+VOID
+EFIAPI
+SprdEmmcExitBootServices (
+  IN EFI_EVENT Event,
+  IN VOID      *Context
+  )
+{
+  (VOID)Event;
+  (VOID)Context;
+
+  DEBUG ((DEBUG_INFO, "SprdEmmc: ESB reset mmc config\n"));
+
+  MmioWrite16 (SDHCI_BASE + SDHCI_TRANSFER_MODE, 0);
+  MmioWrite32 (SDHCI_BASE + SDHCI_SIGNAL_ENABLE, 0);
+  MmioWrite32 (SDHCI_BASE + SDHCI_INT_ENABLE, 0);
+  MmioWrite32 (SDHCI_BASE + SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
+  MmioWrite32 (SDHCI_BASE + SDHCI_ADMA_ADDRESS, 0);
+  MmioWrite32 (SDHCI_BASE + SDHCI_ADMA_ADDRESS_HI, 0);
+
+  // Reset only the host command/data engines.  Do not assert the card reset
+  // bit, otherwise Windows would inherit an uninitialized eMMC card.
+  (VOID)SprdSdhciReset (SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 }
 
 STATIC VOID
@@ -200,14 +234,6 @@ EmmcSendDataCmdRaw (
   if (EFI_ERROR (Status)) {
     return Status;
   }
-
-UINT32 i;
-
-for (i = 0; i < ADMA2_MAX_DESC_COUNT; i++) {
-
-    if (!(mAdmaDescTable[i].Attr & ADMA2_ATTR_VALID))
-        break;
-}
 
   if (IsRead) {
     InvalidateDataCacheRange (Buf, XferSize);
@@ -418,11 +444,12 @@ EmmcInitCardFull (VOID)
     HostCtrl  = MmioRead8 (SDHCI_BASE + SDHCI_HOST_CONTROL);
     HostCtrl &= ~((UINT8)SDHCI_CTRL_DMA_MASK | (UINT8)BIT1);
     HostCtrl |= (UINT8)BIT5;
-    if (MmioRead16 (SDHCI_BASE + SDHCI_HOST_CONTROL2) & SDHCI_CTRL2_64BIT_ADDR) {
-      HostCtrl |= (UINT8)SDHCI_CTRL_ADMA2_64;
-    } else {
-      HostCtrl |= (UINT8)SDHCI_CTRL_ADMA2_32;
-    }
+    // The DXE table is ADMA2 32-bit (8-byte entries) and all buffers are
+    // deliberately allocated below 4 GiB.  Do not select ADMA64 here: the
+    // controller would interpret this table as 16-byte entries and walk into
+    // unrelated memory.  The Windows miniport will select its own 64-bit
+    // table format during host initialization.
+    HostCtrl |= (UINT8)SDHCI_CTRL_ADMA2_32;
     MmioWrite8 (SDHCI_BASE + SDHCI_HOST_CONTROL, HostCtrl);
   }
 
@@ -611,6 +638,17 @@ SprdEmmcDxeEntryPoint (
                   &mBlockIo,
                   NULL
                   );
+
+  if (!EFI_ERROR (Status)) {
+    Status = gBS->CreateEventEx (
+                    EVT_NOTIFY_SIGNAL,
+                    TPL_NOTIFY,
+                    SprdEmmcExitBootServices,
+                    NULL,
+                    &gEfiEventExitBootServicesGuid,
+                    &mExitBootServicesEvent
+                    );
+  }
 
   return Status;
 }

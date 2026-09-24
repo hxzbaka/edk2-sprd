@@ -1,0 +1,25 @@
+[Defines]
+  INF_VERSION = 0x0001001B
+  BASE_NAME = SprdPmicDxe
+  FILE_GUID = 06346165-8E2C-4F03-BF0C-8EF6BFD15343
+  MODULE_TYPE = DXE_DRIVER
+  ENTRY_POINT = SprdPmicDxeEntryPoint
+[Sources]
+  SprdPmicDxe.c
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  IoLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+[Protocols]
+  gSprdAonI2cProtocolGuid
+  gSprdPmicProtocolGuid
+[Depex]
+  gSprdAonI2cProtocolGuid
