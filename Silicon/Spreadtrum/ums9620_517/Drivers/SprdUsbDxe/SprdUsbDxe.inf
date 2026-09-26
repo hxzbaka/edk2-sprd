@@ -1,0 +1,29 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = SprdUsbDxe
+  FILE_GUID                      = C3A2E9E3-E67B-4BA0-B0B6-6529C60B5271
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdUsbDxeEntryPoint
+
+[Sources]
+  SprdUsbDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  DebugLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gEfiUsb2HcProtocolGuid
+
+[Guids]
+  gEfiEventDxeDispatchGuid
+
+[Depex]
+  gEfiUsb2HcProtocolGuid

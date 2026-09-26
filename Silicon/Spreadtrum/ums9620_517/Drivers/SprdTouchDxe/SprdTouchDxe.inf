@@ -1,0 +1,35 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SprdSynaTcmTouchDxe
+  FILE_GUID                      = 9d3da8d9-8bbf-4d37-942c-1e81c9821c87
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdTouchDxeInitialize
+
+[Sources.common]
+  SprdTouchDxe.c
+  SprdUms512TcmPlatform.c
+  SprdUms512Tcm.h
+  SprdUms512TcmPlatform.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+
+[LibraryClasses]
+  BaseMemoryLib
+  DebugLib
+  IoLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Guids]
+  gEfiEventExitBootServicesGuid
+
+[Protocols]
+  gEfiAbsolutePointerProtocolGuid
+
+[Depex]
+  TRUE

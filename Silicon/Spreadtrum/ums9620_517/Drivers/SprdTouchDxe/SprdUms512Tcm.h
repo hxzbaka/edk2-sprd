@@ -1,0 +1,176 @@
+#ifndef SPRD_UMS512_TCM_H
+#define SPRD_UMS512_TCM_H
+
+#include <Uefi.h>
+
+#include <Protocol/AbsolutePointer.h>
+
+#include "SprdUms512TcmPlatform.h"
+
+#define TCM_MESSAGE_MARKER                 0xA5U
+#define TCM_MESSAGE_PADDING                0x5AU
+#define TCM_MESSAGE_HEADER_SIZE            4U
+#define TCM_MAX_MESSAGE_SIZE               4096U
+#define TCM_MAX_FINGERS                    10U
+#define TCM_POLL_PERIOD_100NS              200000U  /* 20 ms */
+#define TCM_COMMAND_TIMEOUT_US             1000000U
+#define TCM_MAX_FAILURES_BEFORE_RESET      5U
+
+typedef struct {
+  UINT16 X;
+  UINT16 Y;
+  BOOLEAN Active;
+} TCM_TOUCH_DATA;
+
+#pragma pack(push, 1)
+typedef struct {
+  UINT8 Marker;
+  UINT8 Code;
+  UINT16 Length;
+} TCM_MESSAGE_HEADER;
+
+typedef struct {
+  UINT8 Version;
+  UINT8 Mode;
+  UINT8 PartNumber[16];
+  UINT32 BuildId;
+  UINT16 MaxWriteSize;
+} TCM_ID_INFO;
+#pragma pack(pop)
+
+typedef struct {
+  UINT8 Data[TCM_MAX_MESSAGE_SIZE];
+  UINTN Length;
+} TCM_BUFFER;
+
+typedef struct {
+  EFI_EVENT PollTimer;
+  EFI_EVENT ExitBootServices;
+  EFI_ABSOLUTE_POINTER_PROTOCOL AbsolutePointer;
+  EFI_ABSOLUTE_POINTER_MODE AbsolutePointerMode;
+  EFI_ABSOLUTE_POINTER_STATE AbsolutePointerState;
+  EFI_HANDLE Handle;
+  SPRD_UMS512_I2C I2c;
+  SPRD_UMS512_GPIO Gpio;
+  TCM_BUFFER Message;
+  TCM_BUFFER ReportConfig;
+  TCM_ID_INFO Identify;
+  UINT64 LastX;
+  UINT64 LastY;
+  BOOLEAN LastActive;
+  BOOLEAN Initialized;
+  BOOLEAN Exiting;
+  BOOLEAN PollInProgress;
+  BOOLEAN StateChanged;
+  BOOLEAN ProtocolInstalled;
+  UINT32 FailureCount;
+  UINT32 DiagnosticMessages;
+} SPRD_TCM_CONTEXT;
+
+enum {
+  TCM_STATUS_IDLE = 0x00,
+  TCM_STATUS_OK = 0x01,
+  TCM_STATUS_BUSY = 0x02,
+  TCM_STATUS_CONTINUED_READ = 0x03,
+  TCM_STATUS_NOT_EXECUTED_IN_DEEP_SLEEP = 0x0B,
+  TCM_STATUS_NOT_IMPLEMENTED = 0x0E,
+  TCM_STATUS_ERROR = 0x0F,
+  TCM_STATUS_INVALID = 0xFF,
+};
+
+enum {
+  TCM_REPORT_IDENTIFY = 0x10,
+  TCM_REPORT_TOUCH = 0x11,
+};
+
+enum {
+  TCM_CMD_IDENTIFY = 0x02,
+  TCM_CMD_GET_TOUCH_REPORT_CONFIG = 0x25,
+};
+
+/* Report configuration opcodes used by Synaptics TCM application firmware. */
+enum {
+  TOUCH_END = 0x00,
+  TOUCH_FOREACH_ACTIVE_OBJECT = 0x01,
+  TOUCH_FOREACH_OBJECT = 0x02,
+  TOUCH_FOREACH_END = 0x03,
+  TOUCH_PAD_TO_NEXT_BYTE = 0x04,
+  TOUCH_TIMESTAMP = 0x05,
+  TOUCH_OBJECT_N_INDEX = 0x06,
+  TOUCH_OBJECT_N_CLASSIFICATION = 0x07,
+  TOUCH_OBJECT_N_X_POSITION = 0x08,
+  TOUCH_OBJECT_N_Y_POSITION = 0x09,
+  TOUCH_OBJECT_N_Z = 0x0A,
+  TOUCH_OBJECT_N_X_WIDTH = 0x0B,
+  TOUCH_OBJECT_N_Y_WIDTH = 0x0C,
+  TOUCH_OBJECT_N_TX_POSITION_TIXELS = 0x0D,
+  TOUCH_OBJECT_N_RX_POSITION_TIXELS = 0x0E,
+  TOUCH_0D_BUTTONS_STATE = 0x0F,
+  TOUCH_GESTURE_ID = 0x10,
+  TOUCH_FRAME_RATE = 0x11,
+  TOUCH_POWER_IM = 0x12,
+  TOUCH_CID_IM = 0x13,
+  TOUCH_RAIL_IM = 0x14,
+  TOUCH_CID_VARIANCE_IM = 0x15,
+  TOUCH_NSM_FREQUENCY = 0x16,
+  TOUCH_NSM_STATE = 0x17,
+  TOUCH_NUM_OF_ACTIVE_OBJECTS = 0x18,
+  TOUCH_NUM_OF_CPU_CYCLES_USED_SINCE_LAST_FRAME = 0x19,
+  TOUCH_FACE_DETECT = 0x1A,
+  TOUCH_GESTURE_DATA = 0x1B,
+  TOUCH_OBJECT_N_FORCE = 0x1C,
+  TOUCH_FINGERPRINT_AREA_MEET = 0x1D,
+  TOUCH_OBJECT_N_AREA = 0xC0,
+  TOUCH_OBJECT_N_ANGLE = 0xC1,
+  TOUCH_OBJECT_N_MAJOR = 0xC2,
+  TOUCH_OBJECT_N_MINOR = 0xC3,
+  TOUCH_PALM_DETECTED = 0xC5,
+  TOUCH_CUSTOMER_GESTURE_DETECTED = 0xC6,
+  TOUCH_CUSTOMER_GESTURE_INFO = 0xC7,
+  TOUCH_CUSTOMER_GESTURE_INFO2 = 0xC8,
+};
+
+EFI_STATUS
+TcmReadMessage (
+  IN OUT SPRD_TCM_CONTEXT *Context,
+  OUT UINT8 *Code,
+  OUT UINT8 *Payload,
+  IN UINTN PayloadCapacity,
+  OUT UINTN *PayloadLength
+  );
+
+EFI_STATUS
+TcmWriteCommand (
+  IN OUT SPRD_TCM_CONTEXT *Context,
+  IN UINT8 Command,
+  IN CONST UINT8 *Payload OPTIONAL,
+  IN UINTN PayloadLength
+  );
+
+EFI_STATUS
+TcmWaitForInterrupt (
+  IN SPRD_TCM_CONTEXT *Context,
+  IN UINT32 TimeoutUs
+  );
+
+EFI_STATUS
+TcmGetReportConfig (
+  IN OUT SPRD_TCM_CONTEXT *Context
+  );
+
+EFI_STATUS
+TcmParseTouchReport (
+  IN SPRD_TCM_CONTEXT *Context,
+  IN CONST UINT8 *Payload,
+  IN UINTN PayloadLength,
+  OUT TCM_TOUCH_DATA *Touch
+  );
+
+VOID
+EFIAPI
+TcmPollCallback (
+  IN EFI_EVENT Event,
+  IN VOID *Context
+  );
+
+#endif

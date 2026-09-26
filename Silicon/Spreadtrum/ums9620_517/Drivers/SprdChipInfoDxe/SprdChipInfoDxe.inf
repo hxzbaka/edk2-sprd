@@ -1,0 +1,38 @@
+### @file
+# SC9832e Chip Information DXE Driver.
+#
+# Implements EFI_CHIPINFO_PROTOCOL for the Spreadtrum SC9832e platform.
+# Copyright (c) 2026, hxzbaka. All rights reserved.
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SprdChipInfoDxe
+  FILE_GUID                      = 7A3B5E2D-1C6F-4F8A-B9D0-E5A2C3F1E4B7
+  MODULE_TYPE                    = DXE_DRIVER
+  ENTRY_POINT                    = InitializeSprdChipInfo
+
+[Sources]
+  SprdChipInfoDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+
+[Protocols]
+  gEfiChipInfoProtocolGuid
+
+[Guids]
+  gFdtTableGuid
+
+[Depex]
+  TRUE
