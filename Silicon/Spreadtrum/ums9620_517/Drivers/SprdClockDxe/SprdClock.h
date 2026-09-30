@@ -4,7 +4,7 @@
 #include <Uefi.h>
 
 //
-// 时钟域基地址 (UMS9620/Y70)
+// 时钟域基地址 (UMS9620/Y60)
 //
 #define AON_CLK_BASE     0x64920000
 #define AP_AHB_CLK_BASE  0x20010000

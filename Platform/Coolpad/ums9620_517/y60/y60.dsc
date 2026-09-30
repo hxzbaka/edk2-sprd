@@ -1,6 +1,6 @@
 [Defines]
   VENDOR_NAME                    = Coolpad
-  PLATFORM_NAME                  = y70
+  PLATFORM_NAME                  = y60
   PLATFORM_GUID                  = 28f1a3bf-193a-47e3-a7b9-5a435eaab2ee
   PLATFORM_VERSION               = 0.1
   DSC_SPECIFICATION              = 0x00010019
@@ -9,7 +9,7 @@
   BUILD_TARGETS                  = DEBUG|RELEASE
   SKUID_IDENTIFIER               = DEFAULT
   FLASH_DEFINITION               = Platform/Spreadtrum/ums9620_517/ums9620_517.fdf
-  DEVICE_DXE_FV_COMPONENTS       = Platform/Coolpad/ums9620_517/y70/y70.fdf.inc
+  DEVICE_DXE_FV_COMPONENTS       = Platform/Coolpad/ums9620_517/y60/y60.fdf.inc
   DEFINE USE_CUSTOM_FBDXE          = TRUE
 
 !include Platform/Spreadtrum/ums9620_517/ums9620_517.dsc
@@ -22,7 +22,7 @@
   gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight|480
 
   gRenegadePkgTokenSpaceGuid.PcdDeviceVendor|"Unisoc"
-  gRenegadePkgTokenSpaceGuid.PcdDeviceProduct|"y70"
+  gRenegadePkgTokenSpaceGuid.PcdDeviceProduct|"y60"
   gRenegadePkgTokenSpaceGuid.PcdDeviceCodeName|"CP23NV3"
 
   gSprdTokenSpaceGuid.PcdMipiDisplayInitialized|TRUE

@@ -142,7 +142,6 @@
   gSprdTokenSpaceGuid.PcdDsiLaneCount|4|UINT8|0x0000a427
   gSprdTokenSpaceGuid.PcdApGpioBaseAddress|0x32070000|UINT32|0x0000a428
   gSprdTokenSpaceGuid.PcdPanelResetGpio|0|UINT32|0x0000a429
-  gSprdTokenSpaceGuid.UsbMassStorage|FALSE|BOOLEAN|0x0000b000
   gSprdTokenSpaceGuid.PcdDisplayHSync|0|UINT32|0x0000a42a
   gSprdTokenSpaceGuid.PcdDisplayHBackPorch|0|UINT32|0x0000a42b
   gSprdTokenSpaceGuid.PcdDisplayHFrontPorch|0|UINT32|0x0000a42c

@@ -15,7 +15,7 @@
 #include "SprdAdi.h"
 #include <Protocol/SprdGpioProtocol.h>
 
-/* AP GPIO (UMS9620 Y70: 0x64000000 + 0x170000) */
+/* AP GPIO (UMS9620 Y60: 0x64000000 + 0x170000) */
 #define AP_GPIO_BASE        0x64170000
 #define GPIO_GROUP_NR       16
 #define REG_DATA            0x00
@@ -42,7 +42,7 @@
 #define GPIO_PMIC_EIC_END   0x14F
 
 /*
- * Debounce EIC bank base addresses (UMS9620 Y70: 0x64200000 + offset).
+ * Debounce EIC bank base addresses (UMS9620 Y60: 0x64200000 + offset).
  * Order: bank0, bank1, bank2, bank3, bank4, bank5
  */
 STATIC CONST UINT32 mEicBankBase[EIC_BANK_NUM] = {

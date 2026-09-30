@@ -11,9 +11,9 @@
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
 
-#define SDHCI_BASE                      0x22200000  // Y70 UMS9620 sdio3 (eMMC)
-#define AP_AHB_GATE_BASE                0x20000000  // Y70 ap_ahb_regs (syscon@20000000)
-#define AON_GATE_BASE                   0x64900000  // Y70 aon_apb_regs (syscon@64900000)
+#define SDHCI_BASE                      0x22200000  // Y60 UMS9620 sdio3 (eMMC)
+#define AP_AHB_GATE_BASE                0x20000000  // Y60 ap_ahb_regs (syscon@20000000)
+#define AON_GATE_BASE                   0x64900000  // Y60 aon_apb_regs (syscon@64900000)
 
 // From kernel ums9620-clk.c:
 //   emmc_eb:     ap_ahb reg 0x0,    enable BIT(3)  (sc_offset 0x1000 = write-1-clear reg)

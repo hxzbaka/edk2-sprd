@@ -1,7 +1,7 @@
 #include "SprdAdi.h"
 #include <Library/IoLib.h>
 
-// DTS: spi@400000 (Y70/UMS9620, AON base 0x64000000)
+// DTS: spi@400000 (Y60/UMS9620, AON base 0x64000000)
 #define ADI_BASE            0x64400000
 // QOGIRN6PRO uses 15-bit channel offset (not 0x8000)
 #define ADI_CHANNEL_OFFSET  0x20000
