@@ -118,7 +118,9 @@ READ_LOCK_STATUS   = TRUE
   INF EmbeddedPkg/SimpleTextInOutSerial/SimpleTextInOutSerial.inf
   INF MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
   INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
+!ifndef USE_CUSTOM_CONSOLE
   INF MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+!endif
   INF MdeModulePkg/Universal/Console/TerminalDxe/TerminalDxe.inf
 
   INF ArmPkg/Drivers/ArmGic/ArmGicDxe.inf
@@ -129,7 +131,11 @@ READ_LOCK_STATUS   = TRUE
 # BSP drivers
 !include Platform/Spreadtrum/sc9832e/dxe.fdf.inc
 
+!ifdef DEVICE_SIMPLE_FB_DRIVER
+  INF $(DEVICE_SIMPLE_FB_DRIVER)
+!else
   INF Silicon/Spreadtrum/SprdPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
+!endif
 
   #
   # USB Host Support

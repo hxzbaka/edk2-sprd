@@ -1,0 +1,70 @@
+## @file
+#  Initializes SC9832E DPU lite r1p0, DSI and Megacores DPHY
+#
+#  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+#  Copyright (c) 2026, atlas4381. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SprdDisplayDxe
+  FILE_GUID                      = EAF1B8B3-62AE-36EF-F107-36106BC8A6AE
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdDisplayDxeInitialize
+
+[Sources]
+  SprdDisplayDxe.c
+  SprdDisplayClock.c
+  SprdDisplayDpu.c
+  SprdDisplayDsi.c
+  SprdDisplayDphy.c
+
+[Packages]
+  ArmPkg/ArmPkg.dec
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  CacheMaintenanceLib
+  DebugLib
+  IoLib
+  PcdLib
+  SprdDisplayPanelLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gSprdDisplayReadyProtocolGuid   ## PRODUCES
+
+[FixedPcd]
+  gArmTokenSpaceGuid.PcdSystemMemoryBase
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
+  gSprdTokenSpaceGuid.PcdMipiPixelClock
+  gSprdTokenSpaceGuid.PcdDpuBaseAddress
+  gSprdTokenSpaceGuid.PcdDsiBaseAddress
+  gSprdTokenSpaceGuid.PcdApAhbBaseAddress
+  gSprdTokenSpaceGuid.PcdApClkBaseAddress
+  gSprdTokenSpaceGuid.PcdPmuApbBaseAddress
+  gSprdTokenSpaceGuid.PcdDsiPhyBitClock
+  gSprdTokenSpaceGuid.PcdDsiEscapeClock
+  gSprdTokenSpaceGuid.PcdDsiLaneCount
+  gSprdTokenSpaceGuid.PcdDisplayCmdMode
+  gSprdTokenSpaceGuid.PcdDisplaySwitchToVideoMode
+  gSprdTokenSpaceGuid.PcdDisplayVideoModeType
+  gSprdTokenSpaceGuid.PcdDisplayHSync
+  gSprdTokenSpaceGuid.PcdDisplayHBackPorch
+  gSprdTokenSpaceGuid.PcdDisplayHFrontPorch
+  gSprdTokenSpaceGuid.PcdDisplayVSync
+  gSprdTokenSpaceGuid.PcdDisplayVBackPorch
+  gSprdTokenSpaceGuid.PcdDisplayVFrontPorch
+  gSprdTokenSpaceGuid.PcdReconfigureDisplay
+
+[Depex]
+  TRUE

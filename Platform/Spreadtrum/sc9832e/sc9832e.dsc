@@ -24,8 +24,6 @@
 
 [PcdsFixedAtBuild.common]
   gArmTokenSpaceGuid.PcdSystemMemoryBase|0x80000000         # Starting address
-  # Deliberately match the known-working UMS512 high-memory UEFI layout.
-  # No LOW_RAM conditional layout is retained for this diagnostic build.
   gArmTokenSpaceGuid.PcdSystemMemorySize|0xFDFA0000
   gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x2E000000
 
@@ -44,7 +42,6 @@
   gEmbeddedTokenSpaceGuid.PcdPrePiStackSize|0x00040000      # 256K stack
   gEmbeddedTokenSpaceGuid.PcdPrePiCpuIoSize|44
 
-  # The 16 MiB framebuffer is 0xBEEF0000..0xBFEEFFFF; DXE begins at its end.
   gSprdTokenSpaceGuid.PcdUefiMemPoolBase|0xBFEF0000         # DXE Heap base address
   # PcdUefiMemPoolSize set conditionally above
   # RT DPU scanout backing store for 480x960 BGRA8888.

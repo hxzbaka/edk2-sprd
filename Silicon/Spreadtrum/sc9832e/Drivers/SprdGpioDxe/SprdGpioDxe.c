@@ -9,12 +9,13 @@
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/IoLib.h>
+#include <Library/PcdLib.h>
 #include <Library/DebugLib.h>
 #include <Protocol/SprdGpioProtocol.h>
 #include "SprdAdi.h"
 
 /* ---------- Common GPIO ---------- */
-#define AP_GPIO_BASE          0x32070000
+#define AP_GPIO_BASE          FixedPcdGet32(PcdApGpioBaseAddress)
 #define GPIO_GROUP_NR         16
 #define GPIO_GROUP_OFFSET     0x80
 

@@ -1,0 +1,32 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SprdButtonDxe
+  FILE_GUID                      = E03BD790-A6B2-4BC8-826F-E5CF22251222
+  MODULE_TYPE                    = DXE_DRIVER
+  ENTRY_POINT                    = SprdButtonDxeEntry
+
+[Sources]
+  SprdButtonDxe.c
+  SprdButtonDxe.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DebugLib
+
+[Protocols]
+  gEfiSimpleTextInProtocolGuid
+  gEfiDevicePathProtocolGuid
+  gEfiClockProtocolGuid
+  gSprdGpioProtocolGuid
+
+[Guids]
+  gEfiConsoleInDeviceGuid
+
+[Depex]
+  TRUE

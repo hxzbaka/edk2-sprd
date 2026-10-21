@@ -121,16 +121,9 @@
 #define EMMC_BLOCK_SIZE                 512
 
 #define CACHE_LINE_SIZE                 64
-/*
- * SharkLE's in-tree sdhcr10 driver limits requests to 524288 bytes.
- * Keep UEFI ADMA transfers within the same validated controller limit.
- */
+
 #define EMMC_MAX_XFER_BLOCKS            1024
-/*
- * Windows Boot Manager reads boot.wim through non-cache-line-aligned
- * buffers.  Keep a real 1 MiB DMA bounce buffer instead of fragmenting
- * those reads into one-page transfers.
- */
+
 #define BOUNCE_SIZE                     (1024 * 1024)
 #define BOUNCE_BUF_BLOCKS               (BOUNCE_SIZE / EMMC_BLOCK_SIZE)
 

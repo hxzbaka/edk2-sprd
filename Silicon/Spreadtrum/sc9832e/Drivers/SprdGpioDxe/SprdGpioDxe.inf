@@ -18,11 +18,15 @@
   UefiDriverEntryPoint
   UefiBootServicesTableLib
   IoLib
+  PcdLib
   BaseLib
   DebugLib
 
 [Protocols]
   gSprdGpioProtocolGuid
+
+[Pcd]
+  gSprdTokenSpaceGuid.PcdApGpioBaseAddress
 
 [Depex]
   TRUE

@@ -21,6 +21,7 @@
   gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth|480
   gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight|960
   gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp|32
+  gSprdTokenSpaceGuid.PcdApGpioBaseAddress|0x32070000
 
   gRenegadePkgTokenSpaceGuid.PcdDeviceVendor|"SPRD"
   gRenegadePkgTokenSpaceGuid.PcdDeviceProduct|"RT"

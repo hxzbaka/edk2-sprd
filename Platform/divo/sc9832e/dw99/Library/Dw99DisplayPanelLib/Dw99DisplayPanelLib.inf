@@ -1,0 +1,24 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = Dw99DisplayPanelLib
+  FILE_GUID                      = 4054E63A-51A3-41E2-9AB3-389057D53F5D
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = SprdDisplayPanelLib
+
+[Sources]
+  Dw99DisplayPanelLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  IoLib
+  PcdLib
+  UefiBootServicesTableLib
+
+[FixedPcd]
+  gSprdTokenSpaceGuid.PcdApGpioBaseAddress
+  gSprdTokenSpaceGuid.PcdPanelResetGpio
+  gSprdTokenSpaceGuid.PcdPanelAvddGpio
