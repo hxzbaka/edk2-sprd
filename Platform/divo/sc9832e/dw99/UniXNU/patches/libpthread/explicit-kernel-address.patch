@@ -1,0 +1,64 @@
+diff --git a/kern/kern_support.c b/kern/kern_support.c
+--- a/kern/kern_support.c
++++ b/kern/kern_support.c
+@@ -802,3 +802,3 @@
+ 	if (ret != 0 || kevent_count == -1) {
+-		*kevent_list_out = NULL;
++		*kevent_list_out = 0;
+ 		*kevent_count_out = 0;
+@@ -849,3 +849,3 @@
+ 	bool first_use = (setup_flags & WQ_SETUP_FIRST_USE);
+-	user_addr_t kevent_list = NULL;
++	user_addr_t kevent_list = 0;
+ 	int kevent_count = 0;
+@@ -882,3 +882,3 @@
+ 		unsigned int flags = KEVENT_FLAG_STACK_DATA | KEVENT_FLAG_IMMEDIATE;
+-		workq_kevent(p, &th_addrs, upcall_flags, NULL, 0, flags,
++		workq_kevent(p, &th_addrs, upcall_flags, 0, 0, flags,
+ 				&kevent_list, &kevent_count);
+@@ -903,3 +903,3 @@
+ 	struct workq_thread_addrs th_addrs;
+-	user_addr_t kevent_list = NULL;
++	user_addr_t kevent_list = 0;
+ 	int kevent_count = 0, error;
+diff --git a/kern/kern_synch.c b/kern/kern_synch.c
+--- a/kern/kern_synch.c
++++ b/kern/kern_synch.c
+@@ -562,3 +562,3 @@
+ 			old_owner = _kwq_clear_owner(kwq);
+-			pthread_kern->psynch_wait_update_owner(kwq, THREAD_NULL,
++			pthread_kern->psynch_wait_update_owner((uintptr_t)kwq, THREAD_NULL,
+ 					&kwq->kw_turnstile);
+@@ -626,3 +626,3 @@
+ 			old_owner = _kwq_clear_owner(kwq);
+-			pthread_kern->psynch_wait_update_owner(kwq, THREAD_NULL,
++			pthread_kern->psynch_wait_update_owner((uintptr_t)kwq, THREAD_NULL,
+ 					&kwq->kw_turnstile);
+@@ -685,3 +685,3 @@
+ 		old_owner = _kwq_set_owner(kwq, current_thread(), 0);
+-		pthread_kern->psynch_wait_update_owner(kwq, kwq->kw_owner,
++		pthread_kern->psynch_wait_update_owner((uintptr_t)kwq, kwq->kw_owner,
+ 				&kwq->kw_turnstile);
+@@ -723,3 +723,3 @@
+ 		old_owner = _kwq_set_owner(kwq, current_thread(), 0);
+-		pthread_kern->psynch_wait_update_owner(kwq, kwq->kw_owner,
++		pthread_kern->psynch_wait_update_owner((uintptr_t)kwq, kwq->kw_owner,
+ 				&kwq->kw_turnstile);
+@@ -806,3 +806,3 @@
+ 
+-	pthread_kern->psynch_wait_complete(kwq, &kwq->kw_turnstile);
++	pthread_kern->psynch_wait_complete((uintptr_t)kwq, &kwq->kw_turnstile);
+ 
+@@ -1981,3 +1981,3 @@
+ 
+-	ret = pthread_kern->psynch_wait_wakeup(kwq, kwe, tstore);
++	ret = pthread_kern->psynch_wait_wakeup((uintptr_t)kwq, kwe, tstore);
+ 
+diff --git a/kern/kern_trace.h b/kern/kern_trace.h
+--- a/kern/kern_trace.h
++++ b/kern/kern_trace.h
+@@ -62,3 +62,3 @@
+     vm_offset_t unslid_ptr;
+-    vm_kernel_unslide_or_perm_external(ptr, &unslid_ptr);
++    vm_kernel_unslide_or_perm_external((vm_offset_t)ptr, &unslid_ptr);
+     return (void*)unslid_ptr;

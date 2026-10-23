@@ -9,6 +9,7 @@
 **/
 
 #include <Library/IoLib.h>
+#include <Library/PcdLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 
 #include "SprdDisplayDxe.h"
@@ -30,7 +31,7 @@
 
 #define PMU_APB_DPHY_POWER_CFG 0x035C
 #define PMU_APB_DPHY_POWER_OFF BIT3
-#define AON_APB_PWR_CTRL       0x402E0024U
+#define AON_APB_PWR_CTRL       0x0024
 #define AON_APB_DSI_PS_PD_S    BIT15
 #define AON_APB_DSI_PS_PD_L    BIT14
 
@@ -116,8 +117,8 @@ SprdDphyGlobalInitialize(IN CONST SPRD_DISPLAY_CONFIG *Config)
       Config->PmuApbBase + PMU_APB_DPHY_POWER_CFG,
       ~PMU_APB_DPHY_POWER_OFF);
   gBS->Stall(100);
-  MmioAnd32(AON_APB_PWR_CTRL, ~AON_APB_DSI_PS_PD_S);
+  MmioAnd32(FixedPcdGet32(PcdAonApbBaseAddress) + AON_APB_PWR_CTRL, ~AON_APB_DSI_PS_PD_S);
   gBS->Stall(10);
-  MmioAnd32(AON_APB_PWR_CTRL, ~AON_APB_DSI_PS_PD_L);
+  MmioAnd32(FixedPcdGet32(PcdAonApbBaseAddress) + AON_APB_PWR_CTRL, ~AON_APB_DSI_PS_PD_L);
   MmioOr32(Config->ApAhbBase + AP_AHB_MISC_CKG_EN, AP_AHB_DPHY_ENABLE);
 }

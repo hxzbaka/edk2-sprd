@@ -1,0 +1,316 @@
+diff --git a/emit_prelink.py b/emit_prelink.py
+index 719b8b2..4e2a72d 100644
+--- a/emit_prelink.py
++++ b/emit_prelink.py
+@@ -3,27 +3,34 @@
+ import argparse
+ import base64
+ import copy
+-import hashlib
+ import json
+ from pathlib import Path
+ import struct
++import uuid
+ import xml.etree.ElementTree as ET
+ 
+ from native_prelink import backed_offset, exports, macho, plan, unserialize_xml
+ 
+ # Standard SHA-256 round constants, stored as 64 little-endian words. Some
+ # assemblers embed these data in executable sections; do not decode as code.
+-SHA256_K_DIGEST = '74ef7306e7452d6859b6463ce496b8df30925f69e1b2969e1f3f34bbc9c6af04'
+-VECTOR_REPEAT_DIGEST = 'f7bb30778915b574b63a17573babfdeb97251ae92fb57e7302e69783f454f92a'
+-ADLER32_VECTOR_DIGEST = '48bdf8e57f8647f2ef3cfda5b500209c4be9b5742632db0ff3614aca8d7ee63d'
+-MATH_LITERAL_POOLS = (
+-    ('00000000004a87c0f039fafe422e8640', 2160, '1a5eb119b57d453a6123eb839b259b96f2ff4f687fc8aabfdcf965ded106df81'),
+-    ('0000807f0000f042db0f493f00008039', 1248, '92c7b2f87685a1e7a92cad6e7d408fdbc03bd67d1207b6579214040f413b2161'),
+-    ('1f2003d500000000001018c00ee52615', 2188, 'c103ce1f2e204bbbfcc2069de79758b0ea399e5e7b39b2b8337cbf3d3f7f960a'),
+-    ('0000c1c00000807fff799f501344d33f', 1088, '22b9e038ad1cbdef1265a71f9213354287637a561eaa52f9ec25f90d10bd0a7c'),
+-    ('0000c1c00000807f0000000084aec68f', 212, '43ef8598a507444b21d8a2abbe4065554baaa3b6a29dbe390465cc0ba0dfbe28'),
+-    ('9b1a86a049faa8bd053f4e7b9dee213e', 56, 'e874aeba59eebdebdf68d18b1196d1ca6aeee12b110985a856f8fe404e0c76ee'),
++SHA256_ROUND_CONSTANTS = (
++    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
++    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
++    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
++    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
++    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
++    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
++    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
++    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+ )
++# The cached inflater uses two 16-byte shuffle vectors per distance. Its full
++# table encodes byte_index % distance, followed by the overlap-copy strides.
++INFLATE_REPEAT_TABLES = tuple(
++    index % distance if distance else 0
++    for distance in range(16) for index in range(32)
++) + (32, 32, 32, 30, 16, 30, 30, 28, 16, 27, 30, 22, 24, 26, 28, 30)
++# Apple zlib adler32vec_arm64.s: descending coefficients, BASE, Q47 reciprocal.
++ADLER32_VECTOR_CONSTANTS = tuple(range(32, 0, -1)) + tuple(struct.pack('<II', 65521, 0x80078071))
+ COALESCED = {'__PRELINK_TEXT': '__TEXT', '__PLK_TEXT_EXEC': '__TEXT_EXEC',
+              '__PLK_DATA_CONST': '__DATA_CONST', '__PRELINK_DATA': '__DATA'}
+ 
+@@ -81,20 +88,16 @@ def instruction_inventory(original_data, parent, modules):
+             at = backed_offset(parent, segment['va'], segment['filesize'], len(original_data))
+             blob = original_data[at:at + segment['filesize']]
+             literals = []
+-            # Complete identity is required: a prefix alone never excludes code.
+-            for prefix, size, digest, prefix_offset in (
+-                    (bytes.fromhex('982f8a42'), 256, SHA256_K_DIGEST, 0),
+-                    (bytes.fromhex('0001000100010001'), 528, VECTOR_REPEAT_DIGEST, 64),
+-                    (bytes(range(32, 24, -1)), 40, ADLER32_VECTOR_DIGEST, 0),
+-                    *((bytes.fromhex(prefix), size, digest, 0) for prefix, size, digest in MATH_LITERAL_POOLS)):
+-                search = 0
+-                while (search := blob.find(prefix, search)) >= 0:
+-                    start = search - prefix_offset
+-                    if start >= 0 and start % 4 == 0 and hashlib.sha256(blob[start:start + size]).hexdigest() == digest:
++            for kind, encoding, values in (
++                    ('sha256-round-constants', '<64I', SHA256_ROUND_CONSTANTS),
++                    ('inflate-repeat-tables', '<528B', INFLATE_REPEAT_TABLES),
++                    ('adler32-vector-constants', '<40B', ADLER32_VECTOR_CONSTANTS)):
++                size = struct.calcsize(encoding)
++                for start in range(0, len(blob) - size + 1, 4):
++                    if struct.unpack_from(encoding, blob, start) == values:
+                         literals.append((start, start + size))
+                         literal_ranges.append({'module': identifier, 'va': segment['va'] + start,
+-                                               'size': size, 'sha256': digest})
+-                    search += 4
++                                               'size': size, 'kind': kind})
+             for offset in range(0, len(blob) - 3, 4):
+                 if any(start <= offset < end for start, end in literals):
+                     continue
+@@ -114,16 +117,19 @@ def instruction_inventory(original_data, parent, modules):
+             'register_dataflow_qualified': False}
+ 
+ 
+-def emit(native_data, original_data, roots, slide, early_security_init=None):
++def emit(native_data, original_data, roots, slide, early_security_init=None, format="current"):
+     report = plan(native_data, original_data, roots, slide)
+     native, original = macho(native_data), macho(original_data)
+-    marker = [address for address, names in exports(native_data, native).items()
+-              if '_kalloc_sparse_prelink_index_version' in names]
+-    if len(marker) != 1:
+-        raise ValueError('Native kernel lacks sparse-prelink index ABI')
+-    marker_at = backed_offset(native['segments'], marker[0], 4, len(native_data))
+-    if struct.unpack_from('<I', native_data, marker_at)[0] != 1:
+-        raise ValueError('Unsupported native sparse-prelink index ABI')
++    if format not in ("current", "4903"):
++        raise ValueError("Unsupported prelink format")
++    if format == "current":
++        marker = [address for address, names in exports(native_data, native).items()
++                  if '_kalloc_sparse_prelink_index_version' in names]
++        if len(marker) != 1:
++            raise ValueError('Native kernel lacks sparse-prelink index ABI')
++        marker_at = backed_offset(native['segments'], marker[0], 4, len(native_data))
++        if struct.unpack_from('<I', native_data, marker_at)[0] != 1:
++            raise ValueError('Unsupported native sparse-prelink index ABI')
+     parent = original['segments']
+     old_info = next(s for s in parent if s['name'] == '__PRELINK_INFO')
+     at = backed_offset(parent, old_info['va'], old_info['filesize'], len(original_data))
+@@ -178,29 +184,31 @@ def emit(native_data, original_data, roots, slide, early_security_init=None):
+         new_segments.append(result)
+         return result
+ 
+-    # Keep coalesced geometry, but only copy selected component segments.
+-    # Packed kernel-resource records are copied as original readonly metadata.
+     for coalesced_name, component_name in COALESCED.items():
+         source = next(s for s in parent if s['name'] == coalesced_name)
+         blob = bytearray(source['size'])
+-        for module in modules.values():
+-            for segment in module['segments']:
+-                if segment['name'] != component_name or not segment['filesize']:
+-                    continue
+-                begin = segment['va'] - source['va']
+-                if begin < 0 or begin + segment['size'] > len(blob):
+-                    raise ValueError('Component is outside original coalesced range')
+-                fileoff = backed_offset(parent, segment['va'], segment['filesize'], len(original_data))
+-                blob[begin:begin + segment['filesize']] = original_data[fileoff:fileoff + segment['filesize']]
+-        if coalesced_name == '__PRELINK_TEXT':
+-            for identifier in report['kernel_interfaces']:
+-                entry = entries[identifier]
+-                va, length = entry['_PrelinkExecutableLoadAddr'], entry['_PrelinkExecutableSize']
+-                begin = va - source['va']
+-                at = backed_offset(parent, va, length, len(original_data))
+-                if begin < 0 or begin + length > len(blob):
+-                    raise ValueError('Kernel interface outside readonly prelink range')
+-                blob[begin:begin + length] = original_data[at:at + length]
++        if format == "4903" and coalesced_name == "__PRELINK_TEXT":
++            at = backed_offset(parent, source['va'], source['filesize'], len(original_data))
++            blob[:source['filesize']] = original_data[at:at + source['filesize']]
++        else:
++            for module in modules.values():
++                for segment in module['segments']:
++                    if segment['name'] != component_name or not segment['filesize']:
++                        continue
++                    begin = segment['va'] - source['va']
++                    if begin < 0 or begin + segment['size'] > len(blob):
++                        raise ValueError('Component is outside original coalesced range')
++                    fileoff = backed_offset(parent, segment['va'], segment['filesize'], len(original_data))
++                    blob[begin:begin + segment['filesize']] = original_data[fileoff:fileoff + segment['filesize']]
++            if coalesced_name == '__PRELINK_TEXT':
++                for identifier in report['kernel_interfaces']:
++                    entry = entries[identifier]
++                    va, length = entry['_PrelinkExecutableLoadAddr'], entry['_PrelinkExecutableSize']
++                    begin = va - source['va']
++                    at = backed_offset(parent, va, length, len(original_data))
++                    if begin < 0 or begin + length > len(blob):
++                        raise ValueError('Kernel interface outside readonly prelink range')
++                    blob[begin:begin + length] = original_data[at:at + length]
+         append_segment(coalesced_name, source['va'] + slide, blob, source['size'], source['initprot'])
+ 
+     def new_offset(address, length):
+@@ -208,8 +216,8 @@ def emit(native_data, original_data, roots, slide, early_security_init=None):
+ 
+     for binding in report['bindings']:
+         struct.pack_into('<Q', output, new_offset(binding['new_site'], 8), binding['new_target'])
+-    # Mach-O VM addresses are not all included in the cache's pointer list.
+-    # Rebase these headers explicitly; preserve section flags and offsets.
++    # Cached integrity POST addresses __text as the module header plus its
++    # section file offset; uniform VM slides preserve this relative geometry.
+     for identifier, module in modules.items():
+         old_header = entries[identifier]['_PrelinkExecutableLoadAddr']
+         original_header = backed_offset(parent, old_header, 32, len(original_data))
+@@ -236,19 +244,20 @@ def emit(native_data, original_data, roots, slide, early_security_init=None):
+             struct.pack_into('<Q', output, new_offset(va + slide + 156, 8), address + slide)
+         report['module_entrypoints'][identifier] = {'kmod_info_va': va + slide,
+             'start_va': start + slide if start else 0, 'stop_va': stop + slide if stop else 0}
+-    headers = sorted(entries[name]['_PrelinkExecutableLoadAddr'] + slide for name in report['components'])
+-    prelink_text = next(s for s in new_segments if s['name'] == '__PRELINK_TEXT')
+-    index_size = len(headers) * 8
+-    index_va = (prelink_text['va'] + prelink_text['size'] - index_size) & ~7
+-    occupied_end = max([s['va'] + slide + s['size'] for module in modules.values()
+-                        for s in module['segments'] if s['name'] == '__TEXT'] +
+-                       [entries[name]['_PrelinkExecutableLoadAddr'] + slide + entries[name]['_PrelinkExecutableSize']
+-                        for name in report['kernel_interfaces']])
+-    if index_va < occupied_end:
+-        raise ValueError('No readonly prelink padding for the sparse header index')
+-    index_at = new_offset(index_va, index_size)
+-    struct.pack_into(f'<{len(headers)}Q', output, index_at, *headers)
+-    report['sparse_index'] = {'va': index_va, 'size': index_size, 'fileoff': index_at, 'headers': headers, 'abi': 1}
++    if format == "current":
++        headers = sorted(entries[name]['_PrelinkExecutableLoadAddr'] + slide for name in report['components'])
++        prelink_text = next(s for s in new_segments if s['name'] == '__PRELINK_TEXT')
++        index_size = len(headers) * 8
++        index_va = (prelink_text['va'] + prelink_text['size'] - index_size) & ~7
++        occupied_end = max([s['va'] + slide + s['size'] for module in modules.values()
++                            for s in module['segments'] if s['name'] == '__TEXT'] +
++                           [entries[name]['_PrelinkExecutableLoadAddr'] + slide + entries[name]['_PrelinkExecutableSize']
++                            for name in report['kernel_interfaces']])
++        if index_va < occupied_end:
++            raise ValueError('No readonly prelink padding for the sparse header index')
++        index_at = new_offset(index_va, index_size)
++        struct.pack_into(f'<{len(headers)}Q', output, index_at, *headers)
++        report['sparse_index'] = {'va': index_va, 'size': index_size, 'fileoff': index_at, 'headers': headers, 'abi': 1}
+     selected_entries = []
+     for identifier in [*report['kernel_interfaces'], *report['components'], *report['codeless_components']]:
+         entry = copy.deepcopy(entries[identifier])
+@@ -266,42 +275,32 @@ def emit(native_data, original_data, roots, slide, early_security_init=None):
+         raise ValueError('Rebased KASLR offset cannot fit original 32-bit format')
+     new_metadata = {'_PrelinkInfoDictionary': selected_entries,
+                     '_PrelinkLinkKASLROffsets': struct.pack(f'<{len(offsets) + 1}I', len(offsets), *offsets),
+-                    '_PrelinkKCID': hashlib.sha256(native_data + original_data).digest()[:16]}
++                    '_PrelinkKCID': uuid.uuid4().bytes}
+     xml = ET.tostring(to_xml(new_metadata), encoding='utf-8').replace(b' />', b'/>') + b'\0'
+     info_va = align(max(s['va'] + s['size'] for s in native['segments'] if s['size']))
+     append_segment('__PRELINK_INFO', info_va, xml, align(len(xml)), 3)
+-    # Expand the existing command in verified Mach-O header padding; mapped
+-    # payload offsets and all original kernel/component instruction bytes stay put.
+-    commands = []
+-    for command, at, length in native['commands']:
+-        blob = bytearray(output[at:at + length])
+-        if command == 0x19 and blob[8:24].rstrip(b'\0') == b'__PRELINK_TEXT':
+-            struct.pack_into('<I', blob, 4, length + 80)
+-            struct.pack_into('<I', blob, 64, 2)
+-            struct.pack_into('<Q', blob, 72 + 40, index_va - prelink_text['va'])
+-            blob.extend(struct.pack('<16s16sQQ8I', b'__macho_list', b'__PRELINK_TEXT',
+-                                   index_va, index_size, index_at, 3, 0, 0, 0, 0, 0, 0))
+-        commands.append(blob)
+-    rebuilt = b''.join(commands)
+-    first_payload = min(section['fileoff'] for segment in native['segments']
+-                        for section in segment['sections'] if section['size'] and section['fileoff'])
+-    if 32 + len(rebuilt) > first_payload:
+-        raise ValueError('Insufficient native Mach-O header padding for sparse index section')
+-    struct.pack_into('<I', output, 20, len(rebuilt))
+-    output[32:32 + len(rebuilt)] = rebuilt
+-    # No executable instruction byte is patched, including original POST code.
+-    text_hashes = {}
+-    for identifier, module in modules.items():
+-        for segment in module['segments']:
+-            if segment['name'] == '__TEXT_EXEC' and segment['filesize']:
+-                old = backed_offset(parent, segment['va'], segment['filesize'], len(original_data))
+-                new = new_offset(segment['va'] + slide, segment['filesize'])
+-                if output[new:new + segment['filesize']] != original_data[old:old + segment['filesize']]:
+-                    raise ValueError('Original executable bytes changed')
+-                text_hashes[identifier] = hashlib.sha256(original_data[old:old + segment['filesize']]).hexdigest()
++    if format == "current":
++        # Expand the existing command in verified Mach-O header padding; mapped
++        # payload offsets and all original kernel/component instruction bytes stay put.
++        commands = []
++        for command, at, length in native['commands']:
++            blob = bytearray(output[at:at + length])
++            if command == 0x19 and blob[8:24].rstrip(b'\0') == b'__PRELINK_TEXT':
++                struct.pack_into('<I', blob, 4, length + 80)
++                struct.pack_into('<I', blob, 64, 2)
++                struct.pack_into('<Q', blob, 72 + 40, index_va - prelink_text['va'])
++                blob.extend(struct.pack('<16s16sQQ8I', b'__macho_list', b'__PRELINK_TEXT',
++                                       index_va, index_size, index_at, 3, 0, 0, 0, 0, 0, 0))
++            commands.append(blob)
++        rebuilt = b''.join(commands)
++        first_payload = min(section['fileoff'] for segment in native['segments']
++                            for section in segment['sections'] if section['size'] and section['fileoff'])
++        if 32 + len(rebuilt) > first_payload:
++            raise ValueError('Insufficient native Mach-O header padding for sparse index section')
++        struct.pack_into('<I', output, 20, len(rebuilt))
++        output[32:32 + len(rebuilt)] = rebuilt
+     macho(output)
+-    report.update(candidate_sha256=hashlib.sha256(output).hexdigest(), coalesced_segments=new_segments,
+-                  original_executable_sha256=text_hashes, candidate_bytes=len(output),
++    report.update(format=format, coalesced_segments=new_segments, candidate_bytes=len(output),
+                   source_inputs_modified=False, runtime_qualified=False, loadable=False)
+     return bytes(output), report
+ 
+@@ -313,6 +312,7 @@ def main():
+     parser.add_argument('--root', required=True, action='append')
+     parser.add_argument('--slide', required=True, type=lambda value: int(value, 0))
+     parser.add_argument('--output', required=True, type=Path)
++    parser.add_argument('--format', choices=('current', '4903'), default='current')
+     parser.add_argument('--early-security-init', action='append', default=[], metavar='BUNDLE=ORIGINAL_VA',
+                         help='Explicit original void(void) policy initializer, called before lockdown; requires source ABI')
+     args = parser.parse_args()
+@@ -322,13 +322,13 @@ def main():
+         if not separator or not identifier or identifier in initializers:
+             parser.error('Use one BUNDLE=ORIGINAL_VA initializer per module')
+         initializers[identifier] = int(address, 0)
+-    image, report = emit(args.kernel.read_bytes(), args.prelinked.read_bytes(), args.root, args.slide, initializers)
++    image, report = emit(args.kernel.read_bytes(), args.prelinked.read_bytes(), args.root, args.slide, initializers, args.format)
+     if args.output.exists():
+         raise SystemExit('Refuse to overwrite an existing candidate')
+     args.output.parent.mkdir(parents=True, exist_ok=True)
+     args.output.write_bytes(image)
+     args.output.with_suffix('.json').write_text(json.dumps(report, indent=2) + '\n')
+-    print(f'Experimental candidate: {len(image)} bytes; executable bytes unchanged; runtime unqualified')
++    print(json.dumps(report, indent=2))
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/native_prelink.py b/native_prelink.py
+index 3ff3095..009474e 100644
+--- a/native_prelink.py
++++ b/native_prelink.py
+@@ -4,7 +4,6 @@ import argparse
+ import base64
+ from bisect import bisect_right
+ from collections import Counter
+-import hashlib
+ import json
+ from pathlib import Path
+ import struct
+@@ -237,9 +236,7 @@ def plan(native_data, original_data, roots, slide):
+                 raise ValueError(f'Rebased component collides with native {s["name"]}')
+         extents.append({'module': identifier, 'segment': segment['name'],
+                         'va': start + slide, 'size': end - start})
+-    return {'native_sha256': hashlib.sha256(native_data).hexdigest(),
+-            'original_sha256': hashlib.sha256(original_data).hexdigest(),
+-            'slide': slide, 'components': sorted(selected - codeless),
++    return {'slide': slide, 'components': sorted(selected - codeless),
+             'codeless_components': sorted(codeless), 'kernel_interfaces': sorted(interfaces),
+             'pointer_counts': dict(Counter(binding['kind'] for binding in bindings)),
+             'extents': extents, 'bindings': bindings, 'images_modified': False,

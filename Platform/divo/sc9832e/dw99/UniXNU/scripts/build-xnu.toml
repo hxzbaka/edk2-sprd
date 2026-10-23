@@ -1,0 +1,300 @@
+target = "build"
+jobs_environment = "JOBS"
+required_tools = ["git", "make", "xcrun", "xcodebuild", "unifdef"]
+generated_sources = ["source", "firehose_source", "pthread_source", "ctf_source", "storage_source"]
+kernel_symbol_inputs = ["{kernel_archive}"]
+feeds = ["package/../feeds.toml", "scripts/dw99-feeds.toml"]
+patch_directories = ["patches/xnu"]
+include_directories = ["{source}/osfmk"]
+prepare_directories = ["{sdk}/usr/local/include/kernel", "{header_objects}/EXPORT_HDRS/libsa"]
+dispatch_headers = "refer/libdispatch/os"
+dispatch_header_output = "{sdk}/usr/local/include/os"
+unifdef_options = ["-DKERNEL=1", "-DOS_FIREHOSE_SPI=1", "-DOS_VOUCHER_ACTIVITY_SPI_TYPES=1", "-UOS_VOUCHER_ACTIVITY_SPI"]
+link_options = ["-L{sdk}/usr/local/lib/kernel", "-lfirehose_kernel", "{profile_runtime}"]
+link_dependencies = ["{profile_runtime}"]
+
+[profile_runtime]
+resource_directory_command = ["xcrun", "--sdk", "iphoneos", "clang", "-print-resource-dir"]
+archive = "{compiler_resource}/lib/darwin/libclang_rt.profile_ios.a"
+
+[platform_sdk]
+path_command = ["xcrun", "--sdk", "iphoneos", "--show-sdk-path"]
+
+[paths]
+storage_source = "build/iostorage/source"
+storage_objects = "build/iostorage/objects"
+storage_archive = "build/iostorage/libIOStorageFamily.a"
+storage_namespace = "build/iostorage/namespace.h"
+output = "build"
+stock_kernelcache = "build/stock/kernelcache.decompressed"
+stock_ramdisk = "build/stock/restore-ramdisk.img"
+stock_trust_cache = "build/stock/restore.trustcache"
+prelink_source = "build/native-prelink/source"
+prelinked_kernel = "build/kernel/kernel.macho"
+payload_stage = "build/payload/stage"
+payload_image = "build/payload/payload.img"
+payload_report = "build/payload/payload.json"
+platform_seed = "build/payload/platform-seed.txt"
+source = "build/xnu/source"
+sdk = ".cache/fakeroot"
+availability_tool = "refer/AvailabilityVersions/availability.pl"
+ctf_source = "build/dtrace/source"
+ctf_objects = "build/dtrace/obj"
+ctf_symbols = "build/dtrace/sym"
+ctf_destination = "build/dtrace/dst"
+ctfconvert = "build/dtrace/dst/usr/local/bin/ctfconvert"
+ctfmerge = "build/dtrace/dst/usr/local/bin/ctfmerge"
+objects = "build/xnu/ios-obj"
+symbols = "build/xnu/ios-sym"
+destination = "build/xnu/ios-dst"
+header_objects = "build/xnu/obj"
+header_symbols = "build/xnu/sym"
+startup_record = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json"
+compile_record = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json"
+kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped"
+kernel_archive = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.link/mach.development.bcm2837.a"
+firehose_source = "build/firehose/source"
+firehose_objects = "build/firehose/obj"
+firehose_symbols = "build/firehose/sym"
+firehose_archive = ".cache/fakeroot/usr/local/lib/kernel/libfirehose_kernel.a"
+pthread_source = "build/libpthread-kernel/source"
+pthread_objects = "build/libpthread-kernel/objects"
+pthread_archive = "build/libpthread-kernel/libpthread_kernel.a"
+pthread_namespace = "build/libpthread-kernel/namespace.h"
+
+[prelink]
+source = "kits/NativePrelink"
+patches = ["patches/native-prelink/xnu4903.patch"]
+format = "4903"
+roots = ["com.apple.kec.corecrypto", "com.apple.filesystems.hfs.kext", "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib", "com.apple.driver.AppleMobileFileIntegrity"]
+slide = -33554432
+early_security_initializers = { "com.apple.driver.AppleMobileFileIntegrity" = "0xfffffff0061e3e88" }
+command = [
+  "python3", "{prelink_source}/emit_prelink.py", "--kernel", "{kernel}",
+  "--prelinked", "{stock_kernelcache}", "--slide={slide}", "--format", "{format}",
+  "--output", "{prelinked_kernel}",
+]
+
+[payload]
+required_tools = ["mformat", "mcopy"]
+kernel_path = "EFI/UniXNU/Payloads/kernel.macho"
+adt_path = "EFI/UniXNU/Payloads/kernel.macho.adt"
+ramdisk_path = "EFI/UniXNU/Payloads/restore-ramdisk.img"
+trust_cache_path = "EFI/UniXNU/Payloads/kernel.macho.trustcache"
+menu_path = "EFI/UniXNU/unixnu.toml"
+command_line_size = 256
+capacity_fraction = 0.95
+format_command = ["mformat", "-C", "-F", "-T", "{sectors}", "-v", "{volume}", "-i", "{payload_image}", "::"]
+copy_command = ["mcopy", "-i", "{payload_image}", "-s", "-m", "{payload_stage}/EFI", "::/"]
+menu = '''
+version = 1
+[boot]
+timeout = -1
+default = "xnu"
+[ui]
+title = "DW99"
+console = "graphics"
+layout = "portrait"
+scale = 1
+[kits]
+autoload = false
+[[entry]]
+id = "xnu"
+title = "DW99 XNU (1 CPU candidate)"
+type = "xnu"
+path = "Payloads/kernel.macho"
+initrd = "Payloads/restore-ramdisk.img"
+args = {kernel_args}
+[[entry]]
+id = "exit"
+title = "Return to firmware"
+type = "action"
+action = "exit"
+'''
+
+[references]
+xnu = "refer/xnu"
+libplatform = "refer/libplatform"
+libdispatch = "refer/libdispatch"
+libpthread = "refer/libpthread"
+AvailabilityVersions = "refer/AvailabilityVersions"
+dtrace = "refer/dtrace"
+IOStorageFamily = "refer/IOStorageFamily"
+
+[environment]
+KERNEL_SDKROOT = "{sdk}"
+XNU_AVAILABILITY_PL = "{availability_tool}"
+
+[features]
+XNU_SOURCE_CORECRYPTO14 = 0
+XNU_SOURCE_PTHREAD = 1
+XNU_ARM_DT_PLATFORM = 1
+XNU_ARMCPU = 1
+XNU_NATIVE_ARCH_TIMER = 1
+XNU_NATIVE_PAN = 0
+XNU_NATIVE_TRUST_CACHE = 1
+XNU_CRYPTO_BOOTSTRAP = "prelinked"
+XNU_ARMVIRT_PLATFORM = 0
+XNU_NATIVE_UFS = 0
+XNU_NATIVE_ADRENO = 0
+XNU_NATIVE_MOBILE_DISPLAY = 0
+XNU_NATIVE_LEGACY_DISPLAY = 0
+XNU_SHENG_PMGR = 0
+XNU_BOOT_PROGRESS = 0
+
+[make]
+SDKROOT = "iphoneos"
+ARCH_CONFIGS = "ARM64"
+MACHINE_CONFIGS = "BCM2837"
+KERNEL_CONFIGS = "DEVELOPMENT"
+ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG = "arm64"
+DEPLOYMENT_TARGET_FLAGS = "-miphoneos-version-min=12.0 -DXNU_TARGET_OS_IOS"
+DEPLOYMENT_LINKER_FLAGS = "-Wl,-ios_version_min,12.0"
+LD_KERNEL_LIBS = ""
+BUILD_LTO = "0"
+BUILD_WERROR = "1"
+CTFCONVERT = "{ctfconvert}"
+CTFMERGE = "{ctfmerge}"
+OBJROOT = "{objects}"
+SYMROOT = "{symbols}"
+DSTROOT = "{destination}"
+
+[headers_make]
+SDKROOT = "iphoneos"
+OBJROOT = "{header_objects}"
+SYMROOT = "{header_symbols}"
+DSTROOT = "{sdk}"
+
+[compile_options]
+"start.o_SFLAGS_ADD" = "-DXNU_NATIVE_ARCH_TIMER=1 -DXNU_SPRD_BOOT_DIAGNOSTICS=1"
+"arm_init.o_CFLAGS_ADD" = "-DXNU_SPRD_BOOT_DIAGNOSTICS=1"
+"startup.o_CFLAGS_ADD" = "-DXNU_SOURCE_PTHREAD=1 -DXNU_NATIVE_TRUST_CACHE=1 -MJ{startup_record}"
+"trustcache.o_CFLAGS_ADD" = "-DXNU_NATIVE_TRUST_CACHE=1"
+"IOPlatformExpert.cpo_CFLAGS_ADD" = "-DXNU_SPRD_PSTORE=1 -MJ{compile_record}"
+"pe_init.o_CFLAGS_ADD" = "-DXNU_DT_PANIC_REGION=1 -DXNU_SPRD_DPU_CONSOLE=1 -DXNU_SPRD_PSTORE=1"
+"pe_sprd_pstore.o_CFLAGS_ADD" = "-DXNU_SPRD_PSTORE=1 -DXNU_SPRD_PANIC_BUFFER_SIZE=0x8000 -mgeneral-regs-only -mstrict-align"
+"video_console.o_CFLAGS_ADD" = "-DXNU_SPRD_DPU_CONSOLE=1"
+"sprd_dpu_console.o_CFLAGS_ADD" = "-DXNU_SPRD_DPU_CONSOLE=1 -DXNU_SPRD_BOOT_DIAGNOSTICS=1 -mgeneral-regs-only -mstrict-align"
+
+[ctf]
+reference = "dtrace"
+source_work = "{ctf_source}"
+executables = ["{ctfconvert}", "{ctfmerge}"]
+command = [
+  "xcodebuild", "install", "-project", "{ctf_source}/dtrace.xcodeproj",
+  "-target", "ctfconvert", "-target", "ctfmerge", "-configuration", "Release", "-sdk", "macosx", "-jobs", "{jobs}",
+  "ARCHS=x86_64", "VALID_ARCHS=x86_64", "ONLY_ACTIVE_ARCH=NO", "CODE_SIGNING_ALLOWED=NO",
+  "HEADER_SEARCH_PATHS=$(inherited) \"{ctf_source}/lib/libelf\" \"{ctf_source}/lib/libdwarf\" \"{ctf_source}/lib/libctf/common\" \"{ctf_source}/compat/opensolaris\" \"{ctf_source}/compat/opensolaris/sys\"",
+  "OBJROOT={ctf_objects}", "SYMROOT={ctf_symbols}", "DSTROOT={ctf_destination}", "INSTALL_PATH=/usr/local/bin",
+]
+
+[firehose]
+config = "xcodeconfig/libfirehose_kernel.xcconfig"
+patches = ["patches/libdispatch/public-xcode.patch"]
+header_suffix = " $(SDKROOT)/usr/include $(FAKEROOT_DIR)/usr/local/include {source}/EXTERNAL_HEADERS"
+command = [
+  "xcodebuild", "install", "-project", "{firehose_source}/libdispatch.xcodeproj",
+  "-target", "libfirehose_kernel", "-configuration", "Release", "-sdk", "iphoneos", "-jobs", "{jobs}",
+  "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=NO", "IPHONEOS_DEPLOYMENT_TARGET=12.0",
+  "CODE_SIGNING_ALLOWED=NO", "GCC_TREAT_WARNINGS_AS_ERRORS=YES", "ENABLE_BITCODE=NO",
+  "OBJROOT={firehose_objects}", "SYMROOT={firehose_symbols}", "DSTROOT={sdk}", "FAKEROOT_DIR={sdk}",
+]
+
+[[firehose.replace]]
+old = "$(SDKROOT)/System/Library/Frameworks/Kernel.framework"
+new = "$(FAKEROOT_DIR)/System/Library/Frameworks/Kernel.framework"
+
+[[firehose.replace]]
+old = "$(SDKROOT)/usr/local/include"
+new = "$(FAKEROOT_DIR)/usr/local/include"
+
+[[header_copy]]
+source = "refer/libplatform/include"
+destination = "{sdk}/usr/local/include"
+
+[[header_copy]]
+source = "refer/libplatform/private"
+destination = "{sdk}/usr/local/include"
+
+[[header_copy]]
+source = "refer/libplatform/private/platform"
+destination = "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/PrivateHeaders/platform"
+
+[[provider]]
+record = "startup_record"
+reference = "libpthread"
+source_work = "{pthread_source}"
+objects = "{pthread_objects}"
+archive = "{pthread_archive}"
+namespace = "{pthread_namespace}"
+namespace_prefix = "pthread330_"
+force_load = true
+patches = ["patches/libpthread/explicit-kernel-address.patch", "patches/libpthread/arm64-thread-state.patch"]
+sources = ["kern/kern_init.c", "kern/kern_support.c", "kern/kern_synch.c"]
+record_remove_options = ["-D", "-I", "-include"]
+record_remove_flags = ["-nostdinc"]
+compile_options = [
+  "-std=gnu99", "-DKERNEL=1", "-DKERNEL_PRIVATE=1", "-DPRIVATE=1",
+  "-DXNU_KERNEL_PRIVATE=1", "-DMACH_KERNEL_PRIVATE=1",
+  "-DABSOLUTETIME_SCALAR_TYPE=1", "-DNEEDS_SCHED_CALL_T=1", "-DMACH_ASSERT=1", "-DDEBUG=1",
+  "-D__PTHREAD_EXPOSE_INTERNALS__=1",
+  "-Dmach_vm_allocate=mach_vm_allocate_external", "-Dmach_vm_map=mach_vm_map_external",
+]
+include_directories = [
+  "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/PrivateHeaders",
+  "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/Headers",
+  "{sdk}/System/Library/Frameworks/System.framework/Versions/B/PrivateHeaders",
+  "{sdk}/System/Library/Frameworks/System.framework/Versions/B/Headers",
+  "{provider_source}", "{provider_source}/pthread", "{provider_source}/private",
+  "{sdk}/usr/local/include",
+]
+
+[[driver]]
+name = "ArmDTPlatform"
+source = "drivers/ArmDTPlatform/ArmDTPlatform.cpp"
+output = "build/armdt-platform"
+patches = ["patches/armdt-platform/xnu4903-platform.patch"]
+
+[[driver]]
+name = "ArmCpu"
+source = "drivers/ArmCpu/ArmCpu.cpp"
+output = "build/armcpu"
+patches = ["patches/armcpu/gicv2.patch", "patches/armcpu/command-display.patch"]
+
+[[header_copy]]
+source = "{storage_source}"
+destination = "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/IOKit/storage"
+pattern = "*.h"
+
+[[provider]]
+record = "compile_record"
+reference = "IOStorageFamily"
+patches = ["patches/iostorage/native-archive.patch"]
+source_work = "{storage_source}"
+objects = "{storage_objects}"
+archive = "{storage_archive}"
+namespace = "{storage_namespace}"
+namespace_prefix = "iostorage_"
+force_load = true
+sources = [
+  "IOApplePartitionScheme.cpp", "IOBlockStorageDevice.cpp", "IOBlockStorageDriver.cpp",
+  "IOFDiskPartitionScheme.cpp", "IOFilterScheme.cpp", "IOGUIDPartitionScheme.cpp",
+  "IOMedia.cpp", "IOMediaBSDClient.cpp", "IOPartitionScheme.cpp", "IOStorage.cpp",
+]
+record_remove_options = []
+record_remove_flags = []
+compile_options = ["-include", "{platform_sdk}/usr/include/TargetConditionals.h"]
+include_directories = [
+  "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/Headers",
+  "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/PrivateHeaders",
+  "{source}/osfmk",
+]
+
+[[driver]]
+name = "SprdEmmc"
+source = "drivers/SprdEmmc/SprdEmmc.cpp"
+output = "build/sprd-emmc"
+compile_options = [
+  "-include", "{platform_sdk}/usr/include/TargetConditionals.h",
+  "-I", "{sdk}/System/Library/Frameworks/Kernel.framework/Versions/A/Headers",
+]

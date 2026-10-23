@@ -1,0 +1,60 @@
+model = "divo,dw99"
+soc = "sprd,sc9832e"
+product_name = "Divo DW99"
+dram_base = 0x80000000
+dram_size = 0xC0000000
+owned_memory_size = 0x20000000
+minimum_owned_memory_size = 0x10000000
+owned_memory_alignment = 0x200000
+timebase_frequency = 26000000
+cpu_mpidr = 0
+cpu_compatible = "arm,cortex-a53"
+psci_method = "smc"
+platform_chip_id = 0x9832E
+
+[arm_io]
+base = 0x12000000
+size = 0x60000000
+
+[gic]
+compatible = "arm,gic-400"
+distributor = 0x12001000
+distributor_size = 0x1000
+cpu_interface = 0x12002000
+cpu_interface_size = 0x2000
+
+[timer]
+physical_interrupt = 30
+virtual_interrupt = 26
+
+[display]
+compatible = "sprd,dpu-lite-r1p0"
+base = 0x20800000
+size = 0x1000
+interrupt = 78
+frame_timeout_us = 500000
+
+[pstore]
+base = 0x8845A800
+size = 0x40000
+record_size = 0x8000
+
+[emmc]
+compatible = "sprd,sdhc-r10"
+base = 0x20600000
+size = 0x1000
+clock_base = 0x21500000
+clock_size = 0x1000
+gate_base = 0x20E00000
+gate_size = 0x3000
+interrupt = 92
+clock_frequency = 390000000
+clock_selector = 4
+max_frequency = 52000000
+bus_width = 8
+read_only = true
+max_transfer_bytes = 0x80000
+command_timeout_us = 100000
+data_timeout_us = 2000000
+busy_timeout_us = 5000000
+initialization_timeout_us = 1000000

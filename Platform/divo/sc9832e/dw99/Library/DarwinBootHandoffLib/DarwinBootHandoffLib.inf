@@ -1,0 +1,27 @@
+## @file
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION    = 0x00010019
+  BASE_NAME      = Dw99DarwinBootHandoffLib
+  FILE_GUID      = 6FA1742A-60E8-4C86-915C-4900AC39FD88
+  MODULE_TYPE    = BASE
+  VERSION_STRING = 1.0
+  LIBRARY_CLASS  = DarwinBootHandoffLib
+
+[Sources.AARCH64]
+  DarwinBootHandoffLib.S
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  DarwinBootPkg/DarwinBootPkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[FixedPcd]
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootHandoffTimeoutUs
+  gSprdTokenSpaceGuid.PcdDpuBaseAddress
+  gSprdTokenSpaceGuid.PcdDpuCtrlReg
+  gSprdTokenSpaceGuid.PcdDpuIntClrReg
+  gSprdTokenSpaceGuid.PcdDpuIntDoneBit

@@ -18,6 +18,7 @@
   UefiDriverEntryPoint
   UefiBootServicesTableLib
   DebugLib
+  BaseMemoryLib
 
 [Protocols]
   gEfiSimpleTextInProtocolGuid

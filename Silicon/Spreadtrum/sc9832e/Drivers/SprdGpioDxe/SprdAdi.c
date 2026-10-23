@@ -1,9 +1,8 @@
 #include "SprdAdi.h"
 
 #include <Library/IoLib.h>
+#include <Library/PcdLib.h>
 
-/* SC9832E/SharkLE ADI controller: DTS spi@40380000. */
-#define ADI_BASE            0x40380000
 
 #define REG_ADI_RD_CMD      0x28
 #define REG_ADI_RD_DATA     0x2C
@@ -17,16 +16,16 @@ AdiReadRaw (
   )
 {
   MmioWrite32(
-    ADI_BASE + REG_ADI_RD_CMD,
+    FixedPcdGet32(PcdAdiBaseAddress) + REG_ADI_RD_CMD,
     Addr
     );
 
   while (MmioRead32(
-           ADI_BASE + REG_ADI_RD_DATA
+           FixedPcdGet32(PcdAdiBaseAddress) + REG_ADI_RD_DATA
            ) & BIT_RD_BUSY);
 
   return MmioRead32(
-           ADI_BASE + REG_ADI_RD_DATA
+           FixedPcdGet32(PcdAdiBaseAddress) + REG_ADI_RD_DATA
            );
 }
 
@@ -49,7 +48,7 @@ AdiWrite (
   )
 {
   MmioWrite32(
-    ADI_BASE + 0x8000 + Reg,
+    FixedPcdGet32(PcdAdiBaseAddress) + 0x8000 + Reg,
     Value
     );
 }

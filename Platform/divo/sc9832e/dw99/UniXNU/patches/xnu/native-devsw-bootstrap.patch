@@ -1,0 +1,13 @@
+diff --git a/iokit/Kernel/IOStartIOKit.cpp b/iokit/Kernel/IOStartIOKit.cpp
+--- a/iokit/Kernel/IOStartIOKit.cpp
++++ b/iokit/Kernel/IOStartIOKit.cpp
+@@ -144,8 +144,8 @@
+     // initialise as basic OS services.
+     //
+     IOLibInit(); 
++    devsw_init();
+     OSlibkernInit();
+-    devsw_init();
+ 
+     gIOProgressBackbufferKey  = OSSymbol::withCStringNoCopy(kIOProgressBackbufferKey);
+     gIORemoveOnReadProperties = OSSet::withObjects((const OSObject **) &gIOProgressBackbufferKey, 1);

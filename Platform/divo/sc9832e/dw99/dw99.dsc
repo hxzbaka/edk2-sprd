@@ -19,6 +19,19 @@
   GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_SIMPLE_INIT
 
 [PcdsFixedAtBuild.common]
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsBase|0x8845A800
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsSize|0x40000
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsRecordSize|0x8000
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogPartitionName|L"misc"
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogOffset|0x200
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootDefaultWindowSize|0x10000000
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMaxKernelSize|0x10000000
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMinWindowSize|0x10000000
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMaxWindowSize|0x200000000
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootVisualDiagnostics|TRUE
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootCommandLineSize|256
+  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootHandoffTimeoutUs|500000
+
   gArmTokenSpaceGuid.PcdSystemMemorySize|0xC0000000
   gSprdTokenSpaceGuid.PcdUefiMemPoolBase|0xC0000000
   gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x2DEF0000
@@ -59,6 +72,7 @@
   gSprdTokenSpaceGuid.PcdApAhbBaseAddress|0x20E00000
   gSprdTokenSpaceGuid.PcdApClkBaseAddress|0x21500000
   gSprdTokenSpaceGuid.PcdPmuApbBaseAddress|0x402B0000
+  gsc9832ePkgTokenSpaceGuid.PcdAonApbBaseAddress|0x402E0000
   gSprdTokenSpaceGuid.PcdReconfigureDisplay|TRUE
 
   gEfiMdeModulePkgTokenSpaceGuid.PcdSdMmcPciHostControllerMmioBase|0x20600000
@@ -72,14 +86,22 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdConOutRow|0
 
 [LibraryClasses.common]
+  UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
 !if $(USE_UART) != 1
-  SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.inf
+  SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/DxeFrameBufferSerialPortLib.inf
 !endif
   PlatformMemoryMapLib|Platform/divo/sc9832e/dw99/Library/PlatformMemoryMapLib/PlatformMemoryMapLib.inf
   SOCSmbiosInfoLib|Platform/divo/sc9832e/dw99/Library/SOCSmbiosInfoLib/SOCSmbiosInfoLib.inf
   SprdDisplayPanelLib|Platform/divo/sc9832e/dw99/Library/Dw99DisplayPanelLib/Dw99DisplayPanelLib.inf
 
 [Components.common]
+  Platform/divo/sc9832e/dw99/Drivers/DarwinPanicRecoveryDxe/DarwinPanicRecoveryDxe.inf
+  UniXNUPkg/Application/UniXNU/UniXNU.inf
+  UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
+  DarwinBootPkg/Driver/DarwinBoot.inf {
+    <LibraryClasses>
+      DarwinBootHandoffLib|Platform/divo/sc9832e/dw99/Library/DarwinBootHandoffLib/DarwinBootHandoffLib.inf
+  }
   Platform/divo/sc9832e/dw99/Drivers/SimpleFbDxe/SimpleFbDxe.inf
   Platform/divo/sc9832e/dw99/Drivers/SprdDisplayDxe/SprdDisplayDxe.inf
   Silicon/Spreadtrum/uws6152/Drivers/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
@@ -93,7 +115,7 @@
 !if $(NO_EXCEPTION_DISPLAY) != TRUE
   ArmPkg/Drivers/CpuDxe/CpuDxe.inf {
     <LibraryClasses>
-      SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.inf
+      SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/DxeFrameBufferSerialPortLib.inf
   }
 !endif
 !endif

@@ -1,0 +1,799 @@
+diff --git a/DarwinBootPkg/DarwinBootPkg.dec b/DarwinBootPkg/DarwinBootPkg.dec
+new file mode 100644
+index 0000000..3240fbf
+--- /dev/null
++++ b/DarwinBootPkg/DarwinBootPkg.dec
+@@ -0,0 +1,27 @@
++## @file
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++##
++
++[Defines]
++  DEC_SPECIFICATION = 0x00010019
++  PACKAGE_NAME = DarwinBootPkg
++  PACKAGE_GUID = 719BDCCD-BD34-48F7-A97C-8DD629D078A4
++  PACKAGE_VERSION = 0.1
++
++[Includes]
++  Include
++
++[LibraryClasses]
++  DarwinBootHandoffLib|Include/Library/DarwinBootHandoffLib.h
++
++[Guids]
++  gDarwinBootPkgTokenSpaceGuid = { 0x378ea2de, 0x232e, 0x46ed, { 0xae, 0x0d, 0x49, 0x51, 0x22, 0xbc, 0x80, 0x40 } }
++
++[PcdsFixedAtBuild]
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootDefaultWindowSize|0x10000000|UINT64|0x00000001
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMaxKernelSize|0x10000000|UINT64|0x00000002
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMinWindowSize|0x10000000|UINT64|0x00000003
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMaxWindowSize|0x200000000|UINT64|0x00000004
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootVisualDiagnostics|TRUE|BOOLEAN|0x00000005
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootCommandLineSize|1024|UINT32|0x00000006
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootHandoffTimeoutUs|500000|UINT32|0x00000007
+diff --git a/DarwinBootPkg/Driver/BootArgs.h b/DarwinBootPkg/Driver/BootArgs.h
+index aefcd90..1154f0a 100644
+--- a/DarwinBootPkg/Driver/BootArgs.h
++++ b/DarwinBootPkg/Driver/BootArgs.h
+@@ -3,8 +3,9 @@
+ #define DARWIN_BOOT_ARGS_H_
+ 
+ #include <Base.h>
++#include <Library/PcdLib.h>
+ 
+-// Darwin 23 pexpert/pexpert/arm64/boot.h ABI; all fields are little-endian.
++// ARM64 boot_args fields are little-endian; command capacity depends on the kernel ABI.
+ typedef struct {
+   UINT16  Revision;
+   UINT16  Version;
+@@ -18,7 +19,7 @@ typedef struct {
+   UINT32  TreePadding;
+   UINT64  DeviceTree;
+   UINT32  DeviceTreeLength;
+-  CHAR8   CommandLine[1024];
++  CHAR8   CommandLine[FixedPcdGet32 (PcdDarwinBootCommandLineSize)];
+   UINT32  FlagsPadding;
+   UINT64  BootFlags;
+   UINT64  MemorySizeActual;
+@@ -27,7 +28,10 @@ typedef struct {
+ STATIC_ASSERT (OFFSET_OF (DARWIN_BOOT_ARGS, DeviceTree) == 0x60, "DT ABI");
+ STATIC_ASSERT (OFFSET_OF (DARWIN_BOOT_ARGS, Video) == 0x28, "video ABI");
+ STATIC_ASSERT (OFFSET_OF (DARWIN_BOOT_ARGS, CommandLine) == 0x6c, "command line ABI");
+-STATIC_ASSERT (OFFSET_OF (DARWIN_BOOT_ARGS, MemorySizeActual) == 0x478, "memory ABI");
+-STATIC_ASSERT (sizeof (DARWIN_BOOT_ARGS) == 0x480, "boot_args ABI");
++STATIC_ASSERT ((FixedPcdGet32 (PcdDarwinBootCommandLineSize) > 0) &&
++               ((FixedPcdGet32 (PcdDarwinBootCommandLineSize) & 7) == 0), "command line capacity ABI");
++STATIC_ASSERT (OFFSET_OF (DARWIN_BOOT_ARGS, BootFlags) == 0x70 + FixedPcdGet32 (PcdDarwinBootCommandLineSize), "flags ABI");
++STATIC_ASSERT (OFFSET_OF (DARWIN_BOOT_ARGS, MemorySizeActual) == 0x78 + FixedPcdGet32 (PcdDarwinBootCommandLineSize), "memory ABI");
++STATIC_ASSERT (sizeof (DARWIN_BOOT_ARGS) == 0x80 + FixedPcdGet32 (PcdDarwinBootCommandLineSize), "boot_args ABI");
+ 
+ #endif
+diff --git a/DarwinBootPkg/Driver/DarwinBoot.c b/DarwinBootPkg/Driver/DarwinBoot.c
+--- a/DarwinBootPkg/Driver/DarwinBoot.c
++++ b/DarwinBootPkg/Driver/DarwinBoot.c
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: BSD-2-Clause-Patent
+ #include <Uefi.h>
++#include <Chipset/AArch64.h>
+ #include <Guid/FileInfo.h>
+ #include <Library/BaseLib.h>
+ #include <Library/BaseMemoryLib.h>
+@@ -7,6 +8,7 @@
+ #include <Library/MemoryAllocationLib.h>
+ #include <Library/UefiBootServicesTableLib.h>
+ #include <Library/PrintLib.h>
++#include <Library/PcdLib.h>
+ #include <Library/UefiLib.h>
+ #include <Protocol/UniXNULoader.h>
+ #include <Protocol/LoadedImage.h>
+@@ -17,7 +19,6 @@
+ #include "PackedRamdisk.h"
+ #include "WindowSize.h"
+ 
+-#define WINDOW_SIZE  SIZE_256MB
+ #define BLOCK_SIZE   SIZE_2MB
+ #define MAX_SEGMENTS 64
+ 
+@@ -52,15 +53,29 @@
+ {
+   EFI_GRAPHICS_OUTPUT_PROTOCOL           *Gop;
+   EFI_STATUS                            Status;
++  EFI_STATUS                            VideoStatus;
++  EFI_HANDLE                            *Handles;
++  UINTN                                 Count;
++  UINTN                                 Index;
+ 
+   ZeroMem (Video, 6 * sizeof (*Video));
++  VideoStatus = EFI_SUCCESS;
+   Status = gBS->HandleProtocol (gST->ConsoleOutHandle, &gEfiGraphicsOutputProtocolGuid, (VOID **)&Gop);
+-  if (EFI_ERROR (Status)) {
+-    Status = gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&Gop);
+-  }
+-  if (Status == EFI_NOT_FOUND) { return EFI_SUCCESS; }
++  if (!EFI_ERROR (Status)) {
++    VideoStatus = DarwinBootVideoFromGop (Gop, Video);
++    if (!EFI_ERROR (VideoStatus)) { return VideoStatus; }
++  }
++  Status = gBS->LocateHandleBuffer (ByProtocol, &gEfiGraphicsOutputProtocolGuid, NULL, &Count, &Handles);
++  if (Status == EFI_NOT_FOUND) { return VideoStatus; }
+   if (EFI_ERROR (Status)) { return Status; }
+-  return DarwinBootVideoFromGop (Gop, Video);
++  for (Index = 0; Index < Count; Index++) {
++    Status = gBS->HandleProtocol (Handles[Index], &gEfiGraphicsOutputProtocolGuid, (VOID **)&Gop);
++    if (EFI_ERROR (Status)) { VideoStatus = Status; continue; }
++    VideoStatus = DarwinBootVideoFromGop (Gop, Video);
++    if (!EFI_ERROR (VideoStatus)) { break; }
++  }
++  FreePool (Handles);
++  return VideoStatus;
+ }
+ 
+ STATIC
+@@ -122,6 +137,9 @@
+   SEGMENT  *Segment;
+   BOOLEAN  HasEntry;
+   BOOLEAN  Executable;
++  UINT64   MaxKernelSize;
++
++  MaxKernelSize = PcdGet64 (PcdDarwinBootMaxKernelSize);
+ 
+   if ((Size < 32) || (U32 (Data) != 0xfeedfacf) || (U32 (Data + 4) != 0x100000c) ||
+       (U32 (Data + 8) != 0) || (U32 (Data + 12) != 2)) {
+@@ -148,7 +166,7 @@
+         Segment->FileOffset = U64 (Data + Offset + 40);
+         Segment->FileSize = U64 (Data + Offset + 48);
+         Segment->Protection = U32 (Data + Offset + 60);
+-        if ((Segment->Size > WINDOW_SIZE) || (Segment->Address > MAX_UINT64 - Segment->Size) ||
++        if ((Segment->Size > MaxKernelSize) || (Segment->Address > MAX_UINT64 - Segment->Size) ||
+             (Segment->FileSize > Segment->Size) || (Segment->FileOffset > Size) ||
+             (Segment->FileSize > Size - Segment->FileOffset)) { return EFI_LOAD_ERROR; }
+       }
+@@ -175,8 +193,9 @@
+     }
+   }
+   if (!Executable || (Kernel->Entry & 3) || (Kernel->Base & EFI_PAGE_MASK) ||
+-      (Kernel->Base > MAX_UINT64 - WINDOW_SIZE) ||
+-      (Kernel->End - Kernel->Base > WINDOW_SIZE - SIZE_2MB)) { return EFI_LOAD_ERROR; }
++      (Kernel->Base > MAX_UINT64 - MaxKernelSize) ||
++      (MaxKernelSize <= BLOCK_SIZE) ||
++      (Kernel->End - Kernel->Base > MaxKernelSize - BLOCK_SIZE)) { return EFI_LOAD_ERROR; }
+   return EFI_SUCCESS;
+ }
+ 
+@@ -252,7 +271,7 @@
+   if (MemoryCandidate != MAX_UINTN) {
+     if ((Path != 1) || (*WindowSize != 0)) { return FALSE; }
+     *WindowSize = U64 (Data + MemoryCandidate);
+-    if (!DarwinWindowSizeValid (*WindowSize)) { return FALSE; }
++    if (!DarwinWindowSizeValid (*WindowSize, PcdGet64 (PcdDarwinBootMinWindowSize), PcdGet64 (PcdDarwinBootMaxWindowSize))) { return FALSE; }
+   }
+   if (Children > (Size - *Offset) / 8) { return FALSE; }
+   for (Index = 0; Index < Children; Index++) {
+@@ -271,6 +290,9 @@
+   UINTN End;
+   UINTN Entries;
+   UINTN Entry;
++  UINTN EntrySize;
++  UINT32 Version;
++  INTN HashOrder;
+ 
+   if (Size < 8) { return FALSE; }
+   Count = U32 (Data);
+@@ -279,13 +301,17 @@
+     Start = U32 (Data + 4 + Index * 4);
+     End = (Index + 1 < Count) ? U32 (Data + 8 + Index * 4) : Size;
+     if ((Start < 4 + Count * 4) || (Start & 3) || (End > Size) ||
+-        (End < Start) || (End - Start < 24) || (U32 (Data + Start) != 2)) { return FALSE; }
++        (End < Start) || (End - Start < 24)) { return FALSE; }
++    Version = U32 (Data + Start);
++    if ((Version != 1) && (Version != 2)) { return FALSE; }
++    EntrySize = (Version == 1) ? 22 : 24;
+     Entries = U32 (Data + Start + 20);
+-    if ((Entries > (End - Start - 24) / 24) || (End - Start != 24 + Entries * 24)) { return FALSE; }
++    if ((Entries > (End - Start - 24) / EntrySize) || (End - Start != 24 + Entries * EntrySize)) { return FALSE; }
+     for (Entry = 0; Entry < Entries; Entry++) {
+-      CONST UINT8 *Hash = Data + Start + 24 + Entry * 24;
+-      if ((Hash[20] < 1) || (Hash[20] > 4) ||
+-          ((Entry != 0) && (CompareMem (Hash - 24, Hash, 20) >= 0))) { return FALSE; }
++      CONST UINT8 *Hash = Data + Start + 24 + Entry * EntrySize;
++      HashOrder = (Entry == 0) ? -1 : CompareMem (Hash - EntrySize, Hash, 20);
++      if ((HashOrder > 0) ||
++          ((Version == 2) && ((Hash[20] < 1) || (Hash[20] > 4) || (HashOrder == 0)))) { return FALSE; }
+     }
+   }
+   return TRUE;
+@@ -311,11 +337,10 @@
+   return EFI_OUT_OF_RESOURCES;
+ }
+ 
+-// End of the run of EfiConventionalMemory that begins at Start: the UEFI map often lists physically
+-// adjacent free ranges as separate descriptors, so extend over every descriptor that continues the run.
++// Physically adjacent free ranges can occupy separate EFI memory descriptors.
+ STATIC
+ UINT64
+-RunEnd (EFI_MEMORY_DESCRIPTOR *Map, UINTN Size, UINTN Stride, UINT64 Start, UINT64 End)
++RunEnd (EFI_MEMORY_DESCRIPTOR *Map, UINTN Size, UINTN Stride, UINT64 End)
+ {
+   EFI_MEMORY_DESCRIPTOR *Descriptor;
+   UINTN                 Offset;
+@@ -332,12 +357,9 @@
+       }
+     }
+   } while (Extended);
+-  (VOID)Start;
+   return End;
+ }
+ 
+-// Large diagnostic text straight into the GOP framebuffer: the UEFI text console font is too small to
+-// photograph. 5x12 glyphs from DiagFont.h scaled 4x, white on a black box; wraps at the right edge.
+ #include "DiagFont.h"
+ STATIC CONST UINT64 mDiagFont[] = GLYPH_FONT;
+ 
+@@ -345,15 +367,14 @@
+ VOID
+ DiagDraw (CONST CHAR16 *Text, UINTN Row)
+ {
+-  EFI_GRAPHICS_OUTPUT_PROTOCOL *Gop;
+   UINT64                       Video[6];
+   UINTN                        Scale = 4, X = 0, Y, Index, Gx, Gy, Dx, Dy, Cell, Line;
+   UINT32                       *Fb;
+   UINT64                       Glyph, Data;
+   CHAR16                       Ch;
+ 
+-  if (EFI_ERROR (gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&Gop)) ||
+-      EFI_ERROR (DarwinBootVideoFromGop (Gop, Video))) { return; }
++  if (!PcdGetBool (PcdDarwinBootVisualDiagnostics)) { return; }
++  if (EFI_ERROR (ReadBootVideo (Video)) || (Video[0] == 0)) { return; }
+   Cell = 6 * Scale;
+   Line = 14 * Scale;
+   Y = Video[4] / 4 + Row * Line;
+@@ -414,7 +435,7 @@
+   for (Offset = 0; Offset + Stride <= Size; Offset += Stride) {
+     Descriptor = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + Offset);
+     if ((Descriptor->Type != EfiConventionalMemory) || (Descriptor->NumberOfPages == 0)) { continue; }
+-    End = RunEnd (Map, Size, Stride, Descriptor->PhysicalStart,
++    End = RunEnd (Map, Size, Stride,
+                   Descriptor->PhysicalStart + EFI_PAGES_TO_SIZE (Descriptor->NumberOfPages));
+     RunBytes = End - Descriptor->PhysicalStart;
+     if (RunBytes > BestBytes) { BestBytes = RunBytes; BestStart = Descriptor->PhysicalStart; }
+@@ -476,6 +497,9 @@
+   BOOLEAN                         KeepPacked;
+   UINTN                           TrustCacheOffset;
+   UINT64                          TrustCacheAddress;
++  UINT64                          KernelPrefix;
++  UINT64                          KernelAddress;
++  UINT64                          VirtualBase;
+   DARWIN_BOOT_ARGS                *Args;
+   EFI_MEMORY_DESCRIPTOR           *Map;
+   UINTN                           Capacity;
+@@ -484,26 +508,15 @@
+   UINTN                           Stride;
+   UINT32                          Version;
+   UINTN                           Attempt;
+-  CHAR8                           CommandLine[1024];
++  CHAR8                           CommandLine[FixedPcdGet32 (PcdDarwinBootCommandLineSize)];
+   UINT64                          Video[6];
++  CONST CHAR16                    *Stage;
++  UINT64                          CurrentEl;
++  EFI_STATUS                      WaitStatus;
++  EFI_INPUT_KEY                   InputKey;
++  UINTN                           EventIndex;
+ 
+   (VOID)This;
+-  if ((Request == NULL) || (Request->Volume == NULL) || (Request->KernelPath == NULL)) { return EFI_INVALID_PARAMETER; }
+-  if ((Request->KextCount != 0) || (Request->DeviceTree != NULL) || (Request->DeviceTreeSize != 0) ||
+-      (DarwinCurrentEl () != 4)) {
+-    Print (L"DARWINBOOT: unsupported inputs or exception level; firmware retained\n");
+-    return EFI_UNSUPPORTED;
+-  }
+-  if (!RamdiskLayout (Request->Ramdisk, Request->RamdiskSize, &RamdiskExpandedSize, &RamdiskPacked)) {
+-    return EFI_BAD_BUFFER_SIZE;
+-  }
+-  ZeroMem (CommandLine, sizeof (CommandLine));
+-  if (Request->BootArgs != NULL) {
+-    for (Index = 0; Request->BootArgs[Index] != 0; Index++) {
+-      if ((Index >= sizeof (CommandLine) - 1) || (Request->BootArgs[Index] > 0x7f)) { return EFI_BAD_BUFFER_SIZE; }
+-      CommandLine[Index] = (CHAR8)Request->BootArgs[Index];
+-    }
+-  }
+   Root = NULL;
+   Image = NULL;
+   Tree = NULL;
+@@ -512,14 +525,43 @@
+   Map = NULL;
+   Address = 0;
+   Capacity = 0;
++  WindowSize = 0;
++  Stage = L"request";
++  if ((Request == NULL) || (Request->Volume == NULL) || (Request->KernelPath == NULL)) {
++    Status = EFI_INVALID_PARAMETER; goto Fail;
++  }
++  Stage = L"external kext";
++  if (Request->KextCount != 0) { Status = EFI_UNSUPPORTED; goto Fail; }
++  Stage = L"external DTB";
++  if ((Request->DeviceTree != NULL) || (Request->DeviceTreeSize != 0)) { Status = EFI_UNSUPPORTED; goto Fail; }
++  Stage = L"exception level";
++  CurrentEl = DarwinCurrentEl ();
++  Print (L"DARWINBOOT: CurrentEL raw=0x%lx EL%lu\n", CurrentEl, CurrentEl >> 2);
++  DEBUG ((DEBUG_ERROR, "DARWINBOOT: CurrentEL raw=0x%lx EL%lu\n", CurrentEl, CurrentEl >> 2));
++  if ((CurrentEl != AARCH64_EL1) && (CurrentEl != AARCH64_EL2)) { Status = EFI_UNSUPPORTED; goto Fail; }
++  Stage = L"RAM disk";
++  if (!RamdiskLayout (Request->Ramdisk, Request->RamdiskSize, &RamdiskExpandedSize, &RamdiskPacked)) {
++    Status = EFI_BAD_BUFFER_SIZE; goto Fail;
++  }
++  Stage = L"command line";
++  ZeroMem (CommandLine, sizeof (CommandLine));
++  if (Request->BootArgs != NULL) {
++    for (Index = 0; Request->BootArgs[Index] != 0; Index++) {
++      if ((Index >= sizeof (CommandLine) - 1) || (Request->BootArgs[Index] > 0x7f)) { Status = EFI_BAD_BUFFER_SIZE; goto Fail; }
++      CommandLine[Index] = (CHAR8)Request->BootArgs[Index];
++    }
++  }
++  Stage = L"kernel read";
+   Status = gBS->HandleProtocol (Request->Volume, &gEfiSimpleFileSystemProtocolGuid, (VOID **)&Fs);
+-  if (EFI_ERROR (Status)) { return Status; }
++  if (EFI_ERROR (Status)) { goto Fail; }
+   Status = Fs->OpenVolume (Fs, &Root);
+-  if (EFI_ERROR (Status)) { return Status; }
++  if (EFI_ERROR (Status)) { goto Fail; }
+   Status = ReadFile (Root, Request->KernelPath, SIZE_128MB, &Image, &ImageSize);
+   if (EFI_ERROR (Status)) { goto Fail; }
++  Stage = L"kernel format";
+   Status = ParseKernel (Image, ImageSize, &Kernel);
+   if (EFI_ERROR (Status)) { goto Fail; }
++  Stage = L"ADT read";
+   Length = StrSize (Request->KernelPath);
+   TreePath = AllocatePool (Length + 11 * sizeof (CHAR16));
+   if (TreePath == NULL) { Status = EFI_OUT_OF_RESOURCES; goto Fail; }
+@@ -527,15 +569,17 @@
+   StrCatS (TreePath, Length / sizeof (CHAR16) + 11, L".adt");
+   Status = ReadFile (Root, TreePath, SIZE_16MB, &Tree, &TreeSize);
+   if (EFI_ERROR (Status)) { goto Fail; }
++  Stage = L"ADT validation";
+   Offset = 0;
+   RamdiskOffset = MAX_UINTN;
+   TrustCacheOffset = MAX_UINTN;
+-  WindowSize = 0;
+   KeepPacked = FALSE;
+   if (!AdtNode (Tree, TreeSize, &Offset, 0, 3, &RamdiskOffset, &TrustCacheOffset, &WindowSize, &KeepPacked) || (Offset != TreeSize)) { Status = EFI_COMPROMISED_DATA; goto Fail; }
+   if (KeepPacked && (!RamdiskPacked || (RamdiskOffset == MAX_UINTN))) { Status = EFI_COMPROMISED_DATA; goto Fail; }
+-  if (WindowSize == 0) { WindowSize = WINDOW_SIZE; }
++  if (WindowSize == 0) { WindowSize = PcdGet64 (PcdDarwinBootDefaultWindowSize); }
++  if (!DarwinWindowSizeValid (WindowSize, PcdGet64 (PcdDarwinBootMinWindowSize), PcdGet64 (PcdDarwinBootMaxWindowSize))) { Status = EFI_INVALID_PARAMETER; goto Fail; }
+   if (Kernel.Base > MAX_UINT64 - WindowSize) { Status = EFI_LOAD_ERROR; goto Fail; }
++  Stage = L"RAM disk";
+   if (Request->Ramdisk != NULL) {
+     if ((RamdiskOffset == MAX_UINTN) || (U64 ((UINT8 *)Tree + RamdiskOffset) != 0) ||
+         (U64 ((UINT8 *)Tree + RamdiskOffset + 8) != 0)) { Status = EFI_COMPROMISED_DATA; goto Fail; }
+@@ -543,6 +587,7 @@
+     Status = EFI_UNSUPPORTED;
+     goto Fail;
+   }
++  Stage = L"trustcache";
+   CopyMem (TreePath, Request->KernelPath, Length);
+   StrCatS (TreePath, Length / sizeof (CHAR16) + 11, L".trustcache");
+   Status = ReadFile (Root, TreePath, SIZE_16MB, &TrustCaches, &TrustCacheSize);
+@@ -557,32 +602,57 @@
+     Status = EFI_COMPROMISED_DATA;
+     goto Fail;
+   }
++  KernelPrefix = (TrustCaches == NULL) ? 0 : ALIGN_VALUE (TrustCacheSize, BLOCK_SIZE);
++  if ((Kernel.Base < KernelPrefix) || (KernelPrefix > WindowSize - BLOCK_SIZE) ||
++      (Kernel.End - Kernel.Base > WindowSize - BLOCK_SIZE - KernelPrefix)) {
++    Status = EFI_BAD_BUFFER_SIZE;
++    goto Fail;
++  }
++  VirtualBase = Kernel.Base - KernelPrefix;
++  Stage = L"GOP framebuffer";
+   Status = ReadBootVideo (Video);
+   if (EFI_ERROR (Status)) { goto Fail; }
++  Stage = L"window";
+   Status = AllocateWindow (&Kernel, WindowSize, &Address);
+   if (EFI_ERROR (Status)) { goto Fail; }
+-  ArgsAddress = ALIGN_VALUE (Address + Kernel.End - Kernel.Base, SIZE_16KB);
++  Stage = L"layout";
++  if ((Address > MAX_UINT64 - WindowSize) || (VirtualBase > MAX_UINT64 - WindowSize)) {
++    Status = EFI_BAD_BUFFER_SIZE; goto Fail;
++  }
++  KernelAddress = Address + KernelPrefix;
++  ArgsAddress = ALIGN_VALUE (KernelPrefix + (Kernel.End - Kernel.Base), SIZE_16KB);
++  if ((ArgsAddress > WindowSize - EFI_PAGE_SIZE) ||
++      (TreeSize > WindowSize - ArgsAddress - EFI_PAGE_SIZE)) {
++    Status = EFI_BAD_BUFFER_SIZE; goto Fail;
++  }
+   TreeAddress = ArgsAddress + EFI_PAGE_SIZE;
+   RamdiskAddress = ALIGN_VALUE (TreeAddress + TreeSize, EFI_PAGE_SIZE);
+   RamdiskBytes = ALIGN_VALUE (KeepPacked ? Request->RamdiskSize : RamdiskExpandedSize, EFI_PAGE_SIZE);
+-  TrustCacheAddress = RamdiskAddress + RamdiskBytes;
+-  Used = ALIGN_VALUE (TrustCacheAddress + TrustCacheSize, SIZE_16KB) - Address;
++  if ((RamdiskAddress > WindowSize) || (RamdiskBytes > WindowSize - RamdiskAddress)) {
++    Status = EFI_BAD_BUFFER_SIZE; goto Fail;
++  }
++  Used = ALIGN_VALUE (RamdiskAddress + RamdiskBytes, SIZE_16KB);
+   if (Used > WindowSize - BLOCK_SIZE) { Status = EFI_BAD_BUFFER_SIZE; goto Fail; }
++  ArgsAddress += Address;
++  TreeAddress += Address;
++  RamdiskAddress += Address;
++  // The leading cache allocation precedes kernel text in both VA and PA space.
++  TrustCacheAddress = Address;
+   ZeroMem ((VOID *)(UINTN)Address, (UINTN)Used);
+   for (Index = 0; Index < Kernel.Count; Index++) {
+-    CopyMem ((VOID *)(UINTN)(Address + Kernel.Segments[Index].Address - Kernel.Base),
++    CopyMem ((VOID *)(UINTN)(KernelAddress + (Kernel.Segments[Index].Address - Kernel.Base)),
+              (UINT8 *)Image + Kernel.Segments[Index].FileOffset, (UINTN)Kernel.Segments[Index].FileSize);
+   }
+   Args = (DARWIN_BOOT_ARGS *)(UINTN)ArgsAddress;
+   Args->Revision = 2;
+   Args->Version = 2;
+-  Args->VirtualBase = Kernel.Base;
++  Args->VirtualBase = VirtualBase;
+   Args->PhysicalBase = Address;
+   Args->MemorySize = WindowSize;
+   Args->MemorySizeActual = WindowSize;
+   Args->TopOfKernelData = Address + Used;
+   CopyMem (Args->Video, Video, sizeof (Video));
+-  Args->DeviceTree = Kernel.Base + TreeAddress - Address;
++  Args->DeviceTree = VirtualBase + (TreeAddress - Address);
+   Args->DeviceTreeLength = (UINT32)TreeSize;
+   CopyMem (Args->CommandLine, CommandLine, sizeof (CommandLine));
+   CopyMem ((VOID *)(UINTN)TreeAddress, Tree, TreeSize);
+@@ -602,34 +672,32 @@
+   FreePool (Tree); Tree = NULL;
+   FreePool (TreePath); TreePath = NULL;
+   Root->Close (Root); Root = NULL;
++  Stage = L"memory map";
+   Status = GetMap (&Map, &Capacity, &MapSize, &Key, &Stride);
+   if (EFI_ERROR (Status)) { goto Fail; }
+   Print (L"DARWINBOOT: ARM64 va=0x%lx pa=0x%lx args=0x%lx entry=0x%lx owned=0x%lx\n",
+-         Kernel.Base, Address, ArgsAddress, Address + Kernel.Entry - Kernel.Base, (UINT64)WindowSize);
++         Kernel.Base, KernelAddress, ArgsAddress, KernelAddress + (Kernel.Entry - Kernel.Base), (UINT64)WindowSize);
+   Print (L"DARWINBOOT: video base=0x%lx display=%lu row=%lu width=%lu height=%lu depth=%lu\n",
+          Video[0], Video[1], Video[2], Video[3], Video[4], Video[5]);
+   Print (L"DARWINBOOT: inputs validated; exiting boot services\n");
+ 
+-  //
+-  // The same facts in large type over the whole screen. The firmware's log
+-  // draws far larger than the text console, and the form feed clears the
+-  // screen first. This is what stays visible if the kernel never draws.
+-  //
+-  DEBUG ((DEBUG_ERROR, "\fDARWINBOOT: hand-off to the kernel\n\n"));
+-  DEBUG ((DEBUG_ERROR, "kernel   va 0x%lx  pa 0x%lx\n", Kernel.Base, Address));
+-  DEBUG ((DEBUG_ERROR, "entry    pa 0x%lx\n", Address + Kernel.Entry - Kernel.Base));
+-  DEBUG ((DEBUG_ERROR, "args     pa 0x%lx  window 0x%lx bytes\n", ArgsAddress, (UINT64)WindowSize));
+-  DEBUG ((DEBUG_ERROR, "video    base 0x%lx  %lux%lu  row %lu bytes  %lu bpp\n", Video[0], Video[3], Video[4], Video[2], Video[5]));
+-  DEBUG ((DEBUG_ERROR, "entry words %08x %08x %08x %08x\n",
+-          ReadUnaligned32 ((CONST UINT32 *)(UINTN)(Address + Kernel.Entry - Kernel.Base)),
+-          ReadUnaligned32 ((CONST UINT32 *)(UINTN)(Address + Kernel.Entry - Kernel.Base + 4)),
+-          ReadUnaligned32 ((CONST UINT32 *)(UINTN)(Address + Kernel.Entry - Kernel.Base + 8)),
+-          ReadUnaligned32 ((CONST UINT32 *)(UINTN)(Address + Kernel.Entry - Kernel.Base + 12))));
+-  DEBUG ((DEBUG_ERROR, "CurrentEL %lu  SCTLR_EL1 0x%lx  TCR_EL1 0x%lx\n", DarwinCurrentEl () >> 2, READ_SYSREG (sctlr_el1), READ_SYSREG (tcr_el1)));
+-  DEBUG ((DEBUG_ERROR, "ID_AA64MMFR0_EL1 0x%lx  (PARange %lu, 4 KiB granule %a)\n", READ_SYSREG (id_aa64mmfr0_el1),
+-          READ_SYSREG (id_aa64mmfr0_el1) & 0xF, (((READ_SYSREG (id_aa64mmfr0_el1) >> 28) & 0xF) == 0xF) ? "NOT supported" : "supported"));
+-  DEBUG ((DEBUG_ERROR, "ID_AA64PFR0_EL1  0x%lx\n", READ_SYSREG (id_aa64pfr0_el1)));
+-  DEBUG ((DEBUG_ERROR, "\nExiting boot services. A green bar across the top\nmeans the kernel entry code ran.\n"));
++  if (PcdGetBool (PcdDarwinBootVisualDiagnostics)) {
++    DEBUG ((DEBUG_ERROR, "\fDARWINBOOT: hand-off to the kernel\n\n"));
++    DEBUG ((DEBUG_ERROR, "kernel   va 0x%lx  pa 0x%lx\n", Kernel.Base, KernelAddress));
++    DEBUG ((DEBUG_ERROR, "entry    pa 0x%lx\n", KernelAddress + (Kernel.Entry - Kernel.Base)));
++    DEBUG ((DEBUG_ERROR, "args     pa 0x%lx  window 0x%lx bytes\n", ArgsAddress, (UINT64)WindowSize));
++    DEBUG ((DEBUG_ERROR, "video    base 0x%lx  %lux%lu  row %lu bytes  %lu bpp\n", Video[0], Video[3], Video[4], Video[2], Video[5]));
++    DEBUG ((DEBUG_ERROR, "entry words %08x %08x %08x %08x\n",
++            ReadUnaligned32 ((CONST UINT32 *)(UINTN)(KernelAddress + (Kernel.Entry - Kernel.Base))),
++            ReadUnaligned32 ((CONST UINT32 *)(UINTN)(KernelAddress + (Kernel.Entry - Kernel.Base) + 4)),
++            ReadUnaligned32 ((CONST UINT32 *)(UINTN)(KernelAddress + (Kernel.Entry - Kernel.Base) + 8)),
++            ReadUnaligned32 ((CONST UINT32 *)(UINTN)(KernelAddress + (Kernel.Entry - Kernel.Base) + 12))));
++    DEBUG ((DEBUG_ERROR, "CurrentEL %lu  SCTLR_EL1 0x%lx  TCR_EL1 0x%lx\n", CurrentEl >> 2, READ_SYSREG (sctlr_el1), READ_SYSREG (tcr_el1)));
++    DEBUG ((DEBUG_ERROR, "ID_AA64MMFR0_EL1 0x%lx  (PARange %lu, 4 KiB granule %a)\n", READ_SYSREG (id_aa64mmfr0_el1),
++            READ_SYSREG (id_aa64mmfr0_el1) & 0xF, (((READ_SYSREG (id_aa64mmfr0_el1) >> 28) & 0xF) == 0xF) ? "NOT supported" : "supported"));
++    DEBUG ((DEBUG_ERROR, "ID_AA64PFR0_EL1  0x%lx\n", READ_SYSREG (id_aa64pfr0_el1)));
++    DEBUG ((DEBUG_ERROR, "\nHandoff colors: green=loader blue=cache\nyellow=EL2 ready white=EL1 before XNU\n"));
++  }
+   for (Attempt = 0; Attempt < 3; Attempt++) {
+     MapSize = Capacity;
+     Status = gBS->GetMemoryMap (&MapSize, Map, &Key, &Stride, &Version);
+@@ -639,7 +707,8 @@
+     }
+     Status = gBS->ExitBootServices (mImage, Key);
+     if (!EFI_ERROR (Status)) {
+-      DarwinEnter (ArgsAddress, Address + Kernel.Entry - Kernel.Base, Address, WindowSize, Video[0], Video[2] * Video[4]);
++      DarwinEnter (ArgsAddress, KernelAddress + (Kernel.Entry - Kernel.Base), Address, WindowSize,
++                   PcdGetBool (PcdDarwinBootVisualDiagnostics) ? Video[0] : 0, Video[2] * Video[4]);
+       CpuDeadLoop ();
+     }
+     if (Status != EFI_INVALID_PARAMETER) { CpuDeadLoop (); }
+@@ -654,7 +723,23 @@
+   if (TreePath != NULL) { FreePool (TreePath); }
+   if (Map != NULL) { FreePool (Map); }
+   if (Address != 0) { gBS->FreePages (Address, EFI_SIZE_TO_PAGES (WindowSize)); }
+-  Print (L"DARWINBOOT: boot refused: %r; firmware retained\n", Status);
++  Print (L"DARWINBOOT: %s failed: %r; firmware retained\n", Stage, Status);
++  DEBUG ((DEBUG_ERROR, "DARWINBOOT: %s failed: %r; firmware retained\n", Stage, Status));
++  if (PcdGetBool (PcdDarwinBootVisualDiagnostics) && (gST->ConIn != NULL)) {
++    Print (L"Press Enter to return\n");
++    DEBUG ((DEBUG_ERROR, "Press Enter to return\n"));
++    for (;;) {
++      WaitStatus = gBS->WaitForEvent (1, &gST->ConIn->WaitForKey, &EventIndex);
++      if (EFI_ERROR (WaitStatus)) { break; }
++      WaitStatus = gST->ConIn->ReadKeyStroke (gST->ConIn, &InputKey);
++      if (WaitStatus == EFI_NOT_READY) { continue; }
++      if (EFI_ERROR (WaitStatus) || (InputKey.UnicodeChar == CHAR_CARRIAGE_RETURN)) { break; }
++    }
++    if (EFI_ERROR (WaitStatus)) {
++      Print (L"DARWINBOOT: console input failed: %r\n", WaitStatus);
++      DEBUG ((DEBUG_ERROR, "DARWINBOOT: console input failed: %r\n", WaitStatus));
++    }
++  }
+   return Status;
+ }
+ 
+diff --git a/DarwinBootPkg/Driver/DarwinBoot.inf b/DarwinBootPkg/Driver/DarwinBoot.inf
+index 3a90c96..57aebb3 100644
+--- a/DarwinBootPkg/Driver/DarwinBoot.inf
++++ b/DarwinBootPkg/Driver/DarwinBoot.inf
+@@ -3,7 +3,7 @@
+   INF_VERSION = 0x00010019
+   BASE_NAME = DarwinBoot
+   FILE_GUID = 1B64AF87-8415-4B57-9B16-680D70913B9F
+-  MODULE_TYPE = UEFI_DRIVER
++  MODULE_TYPE = DXE_DRIVER
+   VERSION_STRING = 0.1
+   ENTRY_POINT = DarwinBootEntry
+ 
+@@ -17,14 +17,18 @@
+ 
+ [Packages]
+   MdePkg/MdePkg.dec
++  ArmPkg/ArmPkg.dec
++  DarwinBootPkg/DarwinBootPkg.dec
+   UniXNUPkg/UniXNUPkg.dec
+ 
+ [LibraryClasses]
+   BaseLib
+   BaseMemoryLib
+   DebugLib
++  DarwinBootHandoffLib
+   MemoryAllocationLib
+   PrintLib
++  PcdLib
+   UefiBootServicesTableLib
+   UefiDriverEntryPoint
+   UefiLib
+@@ -37,3 +41,16 @@
+ 
+ [Guids]
+   gEfiFileInfoGuid
++
++[Pcd]
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootDefaultWindowSize
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMaxKernelSize
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMinWindowSize
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootMaxWindowSize
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootVisualDiagnostics
++
++[FixedPcd]
++  gDarwinBootPkgTokenSpaceGuid.PcdDarwinBootCommandLineSize
++
++[Depex]
++  TRUE
+diff --git a/DarwinBootPkg/Driver/Entry.S b/DarwinBootPkg/Driver/Entry.S
+index 890d4df..e882cda 100644
+--- a/DarwinBootPkg/Driver/Entry.S
++++ b/DarwinBootPkg/Driver/Entry.S
+@@ -1,35 +1,60 @@
+ // SPDX-License-Identifier: BSD-2-Clause-Patent
+-#include <AsmMacroLib.h>
++#include <AsmMacroIoLibV8.h>
++
++.equ CURRENT_EL2, 0x8
++.equ SCTLR_M, 0x1
++.equ SCTLR_C, 0x4
++.equ SCTLR_I, 0x1000
++.equ HCR_RW, 0x80000000
++.equ CNTHCTL_EL1_PHYSICAL_ACCESS, 0x3
++.equ CPTR_EL2_RES1, 0x33ff
++.equ SCTLR_EL1_RES1, 0x30d00800
++.equ ID_AA64DFR0_PMUVER_SHIFT, 8
++.equ ID_AA64DFR0_PMUVER_WIDTH, 4
++.equ PMCR_N_SHIFT, 11
++.equ PMCR_N_WIDTH, 5
++.equ PMUVER_IMPLEMENTED_MIN, 1
++.equ SPSR_EL1H_MASKED, 0x3c5
++.equ HANDOFF_ENTER_COLOR, 0xff00ff00
++.equ HANDOFF_CACHE_COLOR, 0xff0000ff
++.equ HANDOFF_EL2_READY_COLOR, 0xffffff00
++.equ HANDOFF_EL1_COLOR, 0xffffffff
++
++.macro MARK_HANDOFF color
++  cbz x23, .Lhandoff_mark_done\@
++  mov x0, x23
++  mov x1, x24
++  mov w2, #(\color & 0xffff)
++  movk w2, #(\color >> 16), lsl #16
++  bl ASM_PFX(DarwinBootMarkStage)
++  cbz w0, DarwinHandoffStopped
++.Lhandoff_mark_done\@:
++.endm
+ 
+ ASM_FUNC(DarwinCurrentEl)
+   mrs x0, CurrentEL
+   ret
+ 
+ // x0=boot_args PA, x1=entry PA, x2=owned PA, x3=owned size, x4=frame buffer
+-// PA (0 for none), x5=its size in bytes. EL1 only.
++// PA (0 for none), x5=its size in bytes. The final handoff runs without a
++// stack on identity-mapped code; callee-saved registers retain the handoff inputs.
+ ASM_FUNC(DarwinEnter)
+   msr daifset, #15
+-  // Breadcrumb: a green bar (BGRA 0xFF00FF00) over the top 1/16 of the frame
+-  // buffer shows that this code ran, whatever the kernel does afterwards.
+-  cbz x4, 2f
+-  lsr x9, x5, #4
+-  bic x9, x9, #7
+-  mov w10, #0xFF00
+-  movk w10, #0xFF00, lsl #16
+-  mov x11, x4
+-3:
+-  stp w10, w10, [x11], #8
+-  subs x9, x9, #8
+-  b.hi 3b
+-  dsb sy
+-2:
+-  add x5, x2, x3
++  mov x19, x0
++  mov x20, x1
++  mov x21, x2
++  mov x22, x3
++  mov x23, x4
++  mov x24, x5
++  MARK_HANDOFF HANDOFF_ENTER_COLOR
++
++  add x5, x21, x22
+   mrs x6, ctr_el0
+   ubfx x6, x6, #16, #4
+   mov x7, #4
+   lsl x6, x7, x6
+   sub x7, x6, #1
+-  bic x4, x2, x7
++  bic x4, x21, x7
+   dsb sy
+ 1:
+   dc civac, x4
+@@ -40,6 +65,10 @@ ASM_FUNC(DarwinEnter)
+   ic iallu
+   dsb sy
+   isb
++  MARK_HANDOFF HANDOFF_CACHE_COLOR
++  mrs x4, CurrentEL
++  cmp x4, #CURRENT_EL2
++  b.eq DarwinEnterFromEl2
+   mrs x4, sctlr_el1
+   bic x4, x4, #1
+   bic x4, x4, #4
+@@ -49,4 +78,66 @@ ASM_FUNC(DarwinEnter)
+   tlbi vmalle1
+   dsb sy
+   isb
+-  br x1
++  b DarwinEnterEl1
++
++DarwinEnterFromEl2:
++  mrs x4, sctlr_el2
++  bic x4, x4, #SCTLR_M
++  bic x4, x4, #SCTLR_C
++  bic x4, x4, #SCTLR_I
++  msr sctlr_el2, x4
++  isb
++  tlbi alle2
++  dsb sy
++  isb
++
++  mov x4, #HCR_RW
++  msr hcr_el2, x4
++  isb
++  mov x4, #CNTHCTL_EL1_PHYSICAL_ACCESS
++  msr cnthctl_el2, x4
++  msr cntvoff_el2, xzr
++  msr cnthp_ctl_el2, xzr
++  mov x4, #CPTR_EL2_RES1
++  msr cptr_el2, x4
++  msr hstr_el2, xzr
++  msr vttbr_el2, xzr
++
++  mrs x4, id_aa64dfr0_el1
++  sbfx x4, x4, #ID_AA64DFR0_PMUVER_SHIFT, #ID_AA64DFR0_PMUVER_WIDTH
++  cmp x4, #PMUVER_IMPLEMENTED_MIN
++  b.lt DarwinEnterWithoutPmu
++  mrs x4, pmcr_el0
++  ubfx x4, x4, #PMCR_N_SHIFT, #PMCR_N_WIDTH
++  b DarwinEnterSetMdcr
++DarwinEnterWithoutPmu:
++  mov x4, xzr
++DarwinEnterSetMdcr:
++  msr mdcr_el2, x4
++  mrs x4, midr_el1
++  msr vpidr_el2, x4
++  mrs x4, mpidr_el1
++  msr vmpidr_el2, x4
++
++  mov x4, #(SCTLR_EL1_RES1 & 0xffff)
++  movk x4, #(SCTLR_EL1_RES1 >> 16), lsl #16
++  msr sctlr_el1, x4
++  isb
++  tlbi vmalle1
++  dsb sy
++  isb
++  MARK_HANDOFF HANDOFF_EL2_READY_COLOR
++  mov x4, #SPSR_EL1H_MASKED
++  msr spsr_el2, x4
++  adr x4, DarwinEnterEl1
++  msr elr_el2, x4
++  eret
++
++DarwinEnterEl1:
++  MARK_HANDOFF HANDOFF_EL1_COLOR
++  mov x0, x19
++  mov x1, x20
++  br x20
++
++DarwinHandoffStopped:
++  b DarwinHandoffStopped
+diff --git a/DarwinBootPkg/Driver/WindowSize.h b/DarwinBootPkg/Driver/WindowSize.h
+index 055549a..9719825 100644
+--- a/DarwinBootPkg/Driver/WindowSize.h
++++ b/DarwinBootPkg/Driver/WindowSize.h
+@@ -1,9 +1,8 @@
+ // SPDX-License-Identifier: BSD-2-Clause-Patent
+ #ifndef DARWINBOOT_WINDOW_SIZE_H
+ #define DARWINBOOT_WINDOW_SIZE_H
+-// Allocation still requires one real conventional-memory run. This is a
+-// parser bound, never a declaration of available RAM or an allocation fallback.
+-static inline int DarwinWindowSizeValid(unsigned long long size) {
+-  return size >= 0x10000000ULL && size <= 0x200000000ULL && !(size & 0x1fffffULL);
++// The requested window must fit one contiguous EFI conventional-memory run.
++static inline int DarwinWindowSizeValid(unsigned long long size, unsigned long long minimum, unsigned long long maximum) {
++  return size >= minimum && size <= maximum && !(size & 0x1fffffULL);
+ }
+ #endif
+diff --git a/DarwinBootPkg/Include/Library/DarwinBootHandoffLib.h b/DarwinBootPkg/Include/Library/DarwinBootHandoffLib.h
+new file mode 100644
+index 0000000..1bbfa79
+--- /dev/null
++++ b/DarwinBootPkg/Include/Library/DarwinBootHandoffLib.h
+@@ -0,0 +1,24 @@
++// SPDX-License-Identifier: BSD-2-Clause-Patent
++#ifndef DARWIN_BOOT_HANDOFF_LIB_H_
++#define DARWIN_BOOT_HANDOFF_LIB_H_
++
++#include <Base.h>
++
++/**
++  Commit a BGRA progress marker after ExitBootServices.
++
++  Implementations must follow AAPCS64 without accessing the stack, using
++  floating point, or calling firmware services. Code and resources must be
++  identity mapped so that the same entry works with the MMU enabled or disabled.
++  TRUE means the transfer completed and its completion state is retained for
++  the next framebuffer owner. FALSE prevents further handoff.
++**/
++BOOLEAN
++EFIAPI
++DarwinBootMarkStage (
++  IN UINT64  FrameBuffer,
++  IN UINT64  FrameBufferBytes,
++  IN UINT32  Color
++  );
++
++#endif
+diff --git a/Test/window-size.c b/Test/window-size.c
+index 12b98ec..bdf420d 100644
+--- a/Test/window-size.c
++++ b/Test/window-size.c
+@@ -4,6 +4,6 @@
+ int main(void) {
+  const unsigned long long yes[]={0x10000000ULL,0xe0000000ULL,0x100000000ULL,0x130000000ULL,0x200000000ULL};
+  const unsigned long long no[]={0,0xfffffffULL,0x10000001ULL,0x130001000ULL,0x200200000ULL,~0ULL};
+- for(unsigned i=0;i<sizeof(yes)/sizeof(yes[0]);++i)assert(DarwinWindowSizeValid(yes[i]));
+- for(unsigned i=0;i<sizeof(no)/sizeof(no[0]);++i)assert(!DarwinWindowSizeValid(no[i]));
++ for(unsigned i=0;i<sizeof(yes)/sizeof(yes[0]);++i)assert(DarwinWindowSizeValid(yes[i],0x10000000ULL,0x200000000ULL));
++ for(unsigned i=0;i<sizeof(no)/sizeof(no[0]);++i)assert(!DarwinWindowSizeValid(no[i],0x10000000ULL,0x200000000ULL));
+ }

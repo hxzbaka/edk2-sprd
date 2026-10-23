@@ -1,0 +1,49 @@
+[[source]]
+name = "xnu"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/xnu.git"
+ref = "xnu-4903.221.2"
+commit = "cc9a63552421e7db025ad771974f3e9f479948ad"
+darwin = "18.2.0"
+version = "4903.221.2"
+
+[[source]]
+name = "libpthread"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/libpthread.git"
+ref = "libpthread-330.220.2"
+commit = "791c5c3bee2aa0ad7c82f84cb0e7c07526759d24"
+
+[[source]]
+name = "libdispatch"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/libdispatch.git"
+ref = "libdispatch-1008.220.2"
+commit = "4130e2d6c09b993075349e99bf906ca31da8c24a"
+
+[[source]]
+name = "libplatform"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/libplatform.git"
+ref = "libplatform-177.200.16"
+commit = "a25c66eb8a73c4860566664570ef5820485f7c78"
+
+[[source]]
+name = "AvailabilityVersions"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/AvailabilityVersions.git"
+commit = "418ebec1a7c6ff5171ae1517efcc829e2f2581f8"
+
+[[source]]
+name = "dtrace"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/dtrace.git"
+ref = "dtrace-284.200.15"
+commit = "394a0a5a4475b2d37b89c7c41d56a57c0bc3ca5f"
+
+[[source]]
+name = "IOStorageFamily"
+kind = "refer"
+git = "https://github.com/apple-oss-distributions/IOStorageFamily.git"
+ref = "IOStorageFamily-218.200.3"
+commit = "0e637763592184691a0e51a0995f10fa110f0780"

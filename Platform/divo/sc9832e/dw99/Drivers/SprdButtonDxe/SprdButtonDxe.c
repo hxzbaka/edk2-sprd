@@ -32,7 +32,6 @@ STATIC EFI_EVENT mWaitEvent;
 STATIC EFI_EVENT mTimerEvent;
 STATIC EFI_HANDLE mHandle = NULL;
 STATIC SPRD_GPIO_PROTOCOL *mGpio;
-STATIC EFI_CLOCK_PROTOCOL *ClockProtocol;
 
 
 #define PLAT_KEYPAD_DEVICE_GUID \
@@ -133,27 +132,13 @@ ScanTimerHandler (
   static UINTN holdVolDown = 0;
   static UINTN holdPower   = 0;
 
-  static BOOLEAN repeatVolUp   = FALSE;
-  static BOOLEAN repeatVolDown = FALSE;
-  static BOOLEAN repeatPower   = FALSE;
+  BOOLEAN volUp;
+  BOOLEAN volDown;
+  BOOLEAN power;
 
-BOOLEAN volUp;
-BOOLEAN volDown;
-BOOLEAN power;
-
-if (mGpio == NULL) {
-  return;
-}
-
-volUp = mGpio->Get(GPIO_KEY_VOLUP);
-
-volDown = mGpio->Get(GPIO_KEY_VOLDOWN);
-
-power = mGpio->Get(GPIO_KEY_POWER);
-
-volUp   = !volUp;
-volDown = !volDown;
-power   = !power;
+  volUp = !mGpio->Get(GPIO_KEY_VOLUP);
+  volDown = !mGpio->Get(GPIO_KEY_VOLDOWN);
+  power = !mGpio->Get(GPIO_KEY_POWER);
 
   if (!initialized) {
     lastVolUp   = volUp;
@@ -163,25 +148,19 @@ power   = !power;
     return;
   }
 
-  // --- Volume Up (SCAN_UP) ---
   if (volUp) {
     if (!lastVolUp) {
-      // Just pressed: immediate key press
       EFI_INPUT_KEY Key = { SCAN_UP, 0 };
       EnqueueKey (&Key);
       DEBUG ((DEBUG_INFO, "[BTN] FUNCTION pressed\n"));
       holdVolUp = 0;
-      repeatVolUp = FALSE;
     } else {
       holdVolUp++;
       if (holdVolUp == 10) {
-        // Held for 1 second (10 * 100ms) -> start auto-repeat
         EFI_INPUT_KEY Key = { SCAN_UP, 0 };
         EnqueueKey (&Key);
         DEBUG ((DEBUG_INFO, "[BTN] FUNCTION auto-repeat start\n"));
-        repeatVolUp = TRUE;
-      } else if (holdVolUp > 10 && repeatVolUp) {
-        // Continue repeating every 100ms
+      } else if (holdVolUp > 10) {
         EFI_INPUT_KEY Key = { SCAN_UP, 0 };
         EnqueueKey (&Key);
       }
@@ -190,26 +169,22 @@ power   = !power;
     if (lastVolUp) {
       DEBUG ((DEBUG_INFO, "[BTN] FUNCTION released\n"));
       holdVolUp = 0;
-      repeatVolUp = FALSE;
     }
   }
 
-  // --- Volume Down (SCAN_DOWN) ---
   if (volDown) {
     if (!lastVolDown) {
       EFI_INPUT_KEY Key = { SCAN_DOWN, 0 };
       EnqueueKey (&Key);
       DEBUG ((DEBUG_INFO, "[BTN] VOL- pressed\n"));
       holdVolDown = 0;
-      repeatVolDown = FALSE;
     } else {
       holdVolDown++;
       if (holdVolDown == 10) {
         EFI_INPUT_KEY Key = { SCAN_DOWN, 0 };
         EnqueueKey (&Key);
         DEBUG ((DEBUG_INFO, "[BTN] VOL- auto-repeat start\n"));
-        repeatVolDown = TRUE;
-      } else if (holdVolDown > 10 && repeatVolDown) {
+      } else if (holdVolDown > 10) {
         EFI_INPUT_KEY Key = { SCAN_DOWN, 0 };
         EnqueueKey (&Key);
       }
@@ -218,26 +193,22 @@ power   = !power;
     if (lastVolDown) {
       DEBUG ((DEBUG_INFO, "[BTN] VOL- released\n"));
       holdVolDown = 0;
-      repeatVolDown = FALSE;
     }
   }
 
-  // --- Power (Enter) ---
   if (power) {
     if (!lastPower) {
       EFI_INPUT_KEY Key = { 0, CHAR_CARRIAGE_RETURN };
       EnqueueKey (&Key);
       DEBUG ((DEBUG_INFO, "[BTN] POWER pressed\n"));
       holdPower = 0;
-      repeatPower = FALSE;
     } else {
       holdPower++;
       if (holdPower == 10) {
         EFI_INPUT_KEY Key = { 0, CHAR_CARRIAGE_RETURN };
         EnqueueKey (&Key);
         DEBUG ((DEBUG_INFO, "[BTN] POWER auto-repeat start\n"));
-        repeatPower = TRUE;
-      } else if (holdPower > 10 && repeatPower) {
+      } else if (holdPower > 10) {
         EFI_INPUT_KEY Key = { 0, CHAR_CARRIAGE_RETURN };
         EnqueueKey (&Key);
       }
@@ -246,7 +217,6 @@ power   = !power;
     if (lastPower) {
       DEBUG ((DEBUG_INFO, "[BTN] POWER released\n"));
       holdPower = 0;
-      repeatPower = FALSE;
     }
   }
 
@@ -255,9 +225,6 @@ power   = !power;
   lastPower   = power;
 }
 
-/**
-  Entry point: enable clocks, install protocols, start scan timer.
-**/
 EFI_STATUS
 EFIAPI
 SprdButtonDxeEntry (
@@ -266,62 +233,53 @@ SprdButtonDxeEntry (
   )
 {
   EFI_STATUS Status;
+  EFI_CLOCK_PROTOCOL *ClockProtocol;
+  UINTN ClkId;
 
-  DEBUG ((DEBUG_ERROR, "[SprdButton] Starting\n"));
-
-  // Zero queue and events (defensive)
-  ZeroMem (&mQueue, sizeof(mQueue));
-  mWaitEvent  = NULL;
-  mTimerEvent = NULL;
-
-
- Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID**)&ClockProtocol);
-  if (!EFI_ERROR (Status)) {
-    UINTN ClkId;
-Status = ClockProtocol->GetClockID(
-                           ClockProtocol,
-                           "eic",
-                           &ClkId
-                           );
-
-DEBUG((
-  DEBUG_ERROR,
-  "[BTN] GetClockID(eic)=%r id=%u\n",
-  Status,
-  (UINT32)ClkId
-  ));
-
-if (!EFI_ERROR(Status)) {
-  ClockProtocol->EnableClock(
-                   ClockProtocol,
-                   ClkId
-                   );
-}
-
-Status = ClockProtocol->GetClockID(
-                           ClockProtocol,
-                           "adi",
-                           &ClkId
-                           );
-
-DEBUG((
-  DEBUG_ERROR,
-  "[BTN] GetClockID(adi)=%r id=%u\n",
-  Status,
-  (UINT32)ClkId
-  ));
-
-if (!EFI_ERROR(Status)) {
-  ClockProtocol->EnableClock(
-                   ClockProtocol,
-                   ClkId
-                   );
-}
-    DEBUG ((DEBUG_ERROR, "[SprdButton] Clocks enabled via protocol\n"));
-  } else {
-    DEBUG ((DEBUG_ERROR, "[SprdButton] Clock protocol not found!\n"));
+  Status = gBS->LocateProtocol (&gEfiClockProtocolGuid, NULL, (VOID **)&ClockProtocol);
+  if (EFI_ERROR (Status)) {
+    return Status;
   }
 
+  Status = ClockProtocol->GetClockID (ClockProtocol, "eic", &ClkId);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = ClockProtocol->EnableClock (ClockProtocol, ClkId);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = ClockProtocol->GetClockID (ClockProtocol, "adi", &ClkId);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = ClockProtocol->EnableClock (ClockProtocol, ClkId);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = gBS->LocateProtocol (&gSprdGpioProtocolGuid, NULL, (VOID **)&mGpio);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = mGpio->DirectionInput (GPIO_KEY_POWER);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = mGpio->DirectionInput (GPIO_KEY_VOLUP);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
+
+  Status = mGpio->DirectionInput (GPIO_KEY_VOLDOWN);
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
   Status = gBS->CreateEvent (
                   0,
@@ -331,49 +289,8 @@ if (!EFI_ERROR(Status)) {
                   &mWaitEvent
                   );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "[SprdButton] CreateEvent(mWaitEvent) failed: %r\n", Status));
     return Status;
   }
-
-// Gpio Load
-  Status = gBS->LocateProtocol (
-                &gSprdGpioProtocolGuid,
-                NULL,
-                (VOID **)&mGpio
-                );
-
-if (EFI_ERROR(Status)) {
-  DEBUG((
-    DEBUG_ERROR,
-    "[SprdButton] GPIO protocol not found %r\n",
-    Status
-    ));
-  return Status;
-}
-
-DEBUG((DEBUG_ERROR, "[SprdButton] GPIO protocol found\n"));
-
-DEBUG((DEBUG_ERROR, "[SprdButton] EIC Init\n"));
-  mGpio->DirectionInput(GPIO_KEY_POWER);
-  mGpio->DirectionInput(GPIO_KEY_VOLUP);
-  mGpio->DirectionInput(GPIO_KEY_VOLDOWN);
-
-  mSimpleTextIn.WaitForKey = mWaitEvent;
-
-  Status = gBS->InstallMultipleProtocolInterfaces (
-                  &mHandle,
-                  &gEfiSimpleTextInProtocolGuid,  &mSimpleTextIn,
-                  &gEfiDevicePathProtocolGuid,     &mDevicePath,
-                  &gEfiConsoleInDeviceGuid,        NULL,
-                  NULL
-                  );
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "InstallMultipleProtocolInterfaces failed: %r\n", Status));
-    return Status;
-  }
-
-
-  gBS->ConnectController (mHandle, NULL, NULL, TRUE);
 
   Status = gBS->CreateEvent (
                   EVT_TIMER | EVT_NOTIFY_SIGNAL,
@@ -383,20 +300,33 @@ DEBUG((DEBUG_ERROR, "[SprdButton] EIC Init\n"));
                   &mTimerEvent
                   );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "[SprdButton] CreateEvent(mTimerEvent) failed: %r\n", Status));
+    gBS->CloseEvent (mWaitEvent);
     return Status;
   }
 
-  Status = gBS->SetTimer (
-                  mTimerEvent,
-                  TimerPeriodic,
-                  1000000
+  Status = gBS->SetTimer (mTimerEvent, TimerPeriodic, 1000000);
+  if (EFI_ERROR (Status)) {
+    goto CloseEvents;
+  }
+
+  mSimpleTextIn.WaitForKey = mWaitEvent;
+  Status = gBS->InstallMultipleProtocolInterfaces (
+                  &mHandle,
+                  &gEfiSimpleTextInProtocolGuid, &mSimpleTextIn,
+                  &gEfiDevicePathProtocolGuid, &mDevicePath,
+                  &gEfiConsoleInDeviceGuid, NULL,
+                  NULL
                   );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "[SprdButton] SetTimer failed: %r\n", Status));
-    return Status;
+    goto CloseEvents;
   }
 
-  DEBUG ((DEBUG_ERROR, "[SprdButton] Ready\n"));
+  gBS->ConnectController (mHandle, NULL, NULL, TRUE);
+  DEBUG ((DEBUG_INFO, "[SprdButton] Ready\n"));
   return EFI_SUCCESS;
+
+CloseEvents:
+  gBS->CloseEvent (mTimerEvent);
+  gBS->CloseEvent (mWaitEvent);
+  return Status;
 }

@@ -1,0 +1,107 @@
+diff --git a/pexpert/arm/pe_init.c b/pexpert/arm/pe_init.c
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -414,10 +414,19 @@
+ 	 */
+ 	check_for_panic_log();
+ 
+-	if (PE_state.video.v_display)
+-		PE_initialize_console(&PE_state.video, kPEGraphicsMode);
+-	else
+-		PE_initialize_console(&PE_state.video, kPETextMode);
++	int mode = PE_state.video.v_display ? kPEGraphicsMode : kPETextMode;
++#if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
++	unsigned int verbose;
++	if (PE_parse_boot_argn("-v", &verbose, sizeof(verbose))) {
++		mode = kPETextMode;
++	}
++#endif
++	PE_initialize_console(&PE_state.video, mode);
++#if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
++	if (mode == kPETextMode) {
++		PE_initialize_console(NULL, kPEAcquireScreen);
++	}
++#endif
+ }
+ 
+ int
+diff --git a/osfmk/console/video_console.c b/osfmk/console/video_console.c
+--- a/osfmk/console/video_console.c
++++ b/osfmk/console/video_console.c
+@@ -2794,6 +2794,12 @@
+ 	boolean_t graphics_now;
+ 	uint32_t delay;
+ 
++#if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
++	if (!gc_initialized) {
++		simple_lock_init(&vc_progress_lock, 0);
++	}
++#endif
++
+ 	if ( boot_vinfo )
+ 	{
+ 		struct vc_info new_vinfo = vinfo;
+@@ -3063,7 +3069,10 @@
+ 	    vc_progress_meter_end   = kProgressMeterMax;
+ 	}
+ #endif
+-	simple_lock_init(&vc_progress_lock, 0);
++#if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
++	if (!gc_initialized)
++#endif
++		simple_lock_init(&vc_progress_lock, 0);
+ 
+ 	if ( gc_graphics_boot == FALSE )
+ 	{
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -309,6 +309,12 @@
+ 
+ 	ml_parse_cpu_topology();
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	if (!sprd_dpu_boot_marker(args, 0xff008080)) {
++		for (;;) { __asm__ volatile("wfe"); }
++	}
++#endif
++
+ 	master_cpu = ml_get_boot_cpu_number();
+ 	assert(master_cpu >= 0 && master_cpu <= ml_get_max_cpu_number());
+ 
+@@ -342,6 +348,12 @@
+ 	 */
+ 	thread->machine.preemption_count = 0;
+ 	thread->machine.CpuDatap = &BootCpuData;
++
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	if (!sprd_dpu_boot_marker(args, 0xff4080ff)) {
++		for (;;) { __asm__ volatile("wfe"); }
++	}
++#endif
+ #if	__arm__ && __ARM_USER_PROTECT__
+         {
+                 unsigned int ttbr0_val, ttbr1_val, ttbcr_val;
+@@ -400,6 +412,12 @@
+ #if __ARM_PAN_AVAILABLE__
+ 	__builtin_arm_wsr("pan", 1);
+ #endif  /* __ARM_PAN_AVAILABLE__ */
++
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	if (!sprd_dpu_boot_marker(args, 0xffff8080)) {
++		for (;;) { __asm__ volatile("wfe"); }
++	}
++#endif
+ 
+ 	arm_vm_init(xmaxmem, args);
+ 
+@@ -453,6 +471,9 @@
+ 
+ 	/* setup console output */
+ 	PE_init_printf(FALSE);
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	printf("XNU: console initialized\n");
++#endif
+ 
+ #if __arm64__
+ #if DEBUG

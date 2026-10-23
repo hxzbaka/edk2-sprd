@@ -1,0 +1,420 @@
+diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
+--- a/osfmk/conf/files.arm64
++++ b/osfmk/conf/files.arm64
+@@ -3,6 +3,7 @@
+ OPTIONS/debug			optional debug
+ 
+ osfmk/vm/vm_apple_protect.c	 standard
++osfmk/kern/trustcache.c		standard
+ osfmk/vm/vm_fourk_pager.c	 standard
+ 
+ osfmk/arm64/hi_res_clock_map.c 	optional hi_res_clock
+diff --git a/osfmk/kern/trustcache.h b/osfmk/kern/trustcache.h
+--- a/osfmk/kern/trustcache.h
++++ b/osfmk/kern/trustcache.h
+@@ -30,6 +30,8 @@
+ #define _KERN_TRUSTCACHE_H_
+ 
+ #include <stdint.h>
++#include <stdbool.h>
++#include <sys/_types/_size_t.h>
+ 
+ #include <kern/cs_blobs.h>
+ 
+@@ -102,6 +104,14 @@
+ 
+ typedef uint8_t pmap_cs_legacy_stc_entry[CS_CDHASH_LEN-1]; // bucketized with first byte
+ 
++void pmap_initialize_legacy_static_trust_cache(const struct legacy_trust_cache_bucket *,
++    size_t, const pmap_cs_legacy_stc_entry *, size_t);
++bool pmap_is_trust_cache_loaded(const uuid_t);
++int pmap_load_legacy_trust_cache(const void *, size_t);
++bool pmap_lookup_in_loaded_trust_caches(const uint8_t [CS_CDHASH_LEN]);
++uint32_t pmap_lookup_in_static_trust_cache(const uint8_t [CS_CDHASH_LEN]);
++int pmap_load_image4_trust_cache(void *, size_t, uint32_t);
++
+ void trust_cache_init(void);
+ 
+ uint32_t lookup_in_static_trust_cache(const uint8_t cdhash[CS_CDHASH_LEN]);
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -102,6 +102,9 @@
+ #include <kern/zalloc.h>
+ #include <kern/locks.h>
+ #include <kern/debug.h>
++#if defined(XNU_NATIVE_TRUST_CACHE) && XNU_NATIVE_TRUST_CACHE
++#include <kern/trustcache.h>
++#endif
+ #include <corpses/task_corpse.h>
+ #include <prng/random.h>
+ #include <console/serial_protos.h>
+@@ -625,6 +628,11 @@
+ 	vm_commpage_init();
+ 	vm_commpage_text_init();
+ 
++#if defined(XNU_NATIVE_TRUST_CACHE) && XNU_NATIVE_TRUST_CACHE
++	kernel_bootstrap_log("trust_cache_init");
++	trust_cache_init();
++#endif
++
+ #if CONFIG_MACF
+ 	kernel_bootstrap_log("mac_policy_initmach");
+ 	mac_policy_initmach();
+diff --git a/osfmk/kern/trustcache.c b/osfmk/kern/trustcache.c
+new file mode 100644
+--- /dev/null
++++ b/osfmk/kern/trustcache.c
+@@ -0,0 +1,352 @@
++/*
++ * Copyright (c) 2011-2018 Apple Inc. All rights reserved.
++ *
++ * @APPLE_OSREFERENCE_LICENSE_HEADER_START@
++ *
++ * This file contains Original Code and/or Modifications of Original Code
++ * as defined in and that are subject to the Apple Public Source License
++ * Version 2.0 (the 'License'). You may not use this file except in
++ * compliance with the License. The rights granted to you under the License
++ * may not be used to create, or enable the creation or redistribution of,
++ * unlawful or unlicensed copies of an Apple operating system, or to
++ * circumvent, violate, or enable the circumvention or violation of, any
++ * terms of an Apple operating system software license agreement.
++ *
++ * Please obtain a copy of the License at
++ * http://www.opensource.apple.com/apsl/ and read it before using this file.
++ *
++ * The Original Code and all software distributed under the License are
++ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
++ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
++ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
++ * Please see the License for the specific language governing rights and
++ * limitations under the License.
++ *
++ * @APPLE_OSREFERENCE_LICENSE_HEADER_END@
++ */
++
++#include <string.h>
++#include <kern/trustcache.h>
++
++#if defined(XNU_NATIVE_TRUST_CACHE) && XNU_NATIVE_TRUST_CACHE
++#include <kern/debug.h>
++#include <kern/kalloc.h>
++#include <kern/locks.h>
++#include <libkern/section_keywords.h>
++#include <mach/kern_return.h>
++#include <libkern/img4/interface.h>
++#include <mach/vm_param.h>
++#include <sys/errno.h>
++#include <pexpert/pexpert.h>
++
++extern vm_offset_t segEXTRADATA;
++extern unsigned long segSizeEXTRADATA;
++
++struct loaded_legacy_trust_cache {
++	struct loaded_legacy_trust_cache *next;
++	uuid_t uuid;
++	uint32_t count;
++	trust_cache_hash0 hashes[];
++};
++
++SECURITY_READ_ONLY_LATE(static const struct serialized_trust_caches *) static_caches;
++SECURITY_READ_ONLY_LATE(static const struct legacy_trust_cache_bucket *) legacy_buckets;
++SECURITY_READ_ONLY_LATE(static const pmap_cs_legacy_stc_entry *) legacy_hashes;
++struct loaded_image4_trust_cache {
++	struct loaded_image4_trust_cache *next;
++	struct trust_cache_module1 module;
++};
++
++SECURITY_READ_ONLY_LATE(static uint32_t) no_legacy_static_cache;
++static struct loaded_legacy_trust_cache *loaded_caches;
++static struct loaded_image4_trust_cache *image4_caches;
++static lck_rw_t loaded_cache_lock;
++
++void
++trust_cache_init(void)
++{
++	lck_grp_t *group = lck_grp_alloc_init("trust_cache", LCK_GRP_ATTR_NULL);
++	lck_rw_init(&loaded_cache_lock, group, LCK_ATTR_NULL);
++	PE_parse_boot_argn("pmap_cs_no_legacy_tc", &no_legacy_static_cache, sizeof(no_legacy_static_cache));
++	if (!segSizeEXTRADATA) {
++		printf("TrustCache: no external cache supplied\n");
++		return;
++	}
++	const struct serialized_trust_caches *caches = (const void *)segEXTRADATA;
++	size_t length = segSizeEXTRADATA;
++	if (length < sizeof(*caches) || !caches->num_caches ||
++	    caches->num_caches > (length - sizeof(*caches)) / sizeof(uint32_t)) {
++		panic("TrustCache: invalid serialized header");
++	}
++	size_t previous_end = sizeof(*caches) + caches->num_caches * sizeof(uint32_t);
++	for (uint32_t i = 0; i < caches->num_caches; i++) {
++		size_t offset = caches->offsets[i];
++		if (offset < previous_end || (offset & (sizeof(uint32_t) - 1)) ||
++		    offset > length || length - offset < sizeof(struct trust_cache_module1)) {
++			panic("TrustCache: invalid module %u offset", i);
++		}
++		const struct trust_cache_module1 *module = (const void *)(segEXTRADATA + offset);
++		if (module->version != 1 || module->num_entries >
++		    (length - offset - sizeof(*module)) / sizeof(struct trust_cache_entry1)) {
++			panic("TrustCache: invalid module %u header", i);
++		}
++		for (uint32_t j = 0; j < module->num_entries; j++) {
++			const struct trust_cache_entry1 *entry = &module->entries[j];
++			if (j && memcmp(entry[-1].cdhash, entry->cdhash, CS_CDHASH_LEN) > 0) {
++				panic("TrustCache: invalid module %u entry %u", i, j);
++			}
++		}
++		previous_end = offset + sizeof(*module) + module->num_entries * sizeof(struct trust_cache_entry1);
++		printf("TrustCache: module %u, %u entries\n", i, module->num_entries);
++	}
++	static_caches = caches;
++}
++
++bool
++lookup_in_trust_cache_module(
++	struct trust_cache_module1 const * const module,
++	uint8_t const   cdhash[CS_CDHASH_LEN],
++	uint8_t * const hash_type,
++	uint8_t * const flags)
++{
++	size_t lim;
++	struct trust_cache_entry1 const *base = &module->entries[0];
++
++	struct trust_cache_entry1 const *entry = NULL;
++
++	bool found = false;
++
++	/* Initialization already (redundantly) verified the size of the module for us. */
++	for (lim = module->num_entries; lim != 0; lim >>= 1) {
++		entry = base + (lim >> 1);
++		int cmp = memcmp(cdhash, entry->cdhash, CS_CDHASH_LEN);
++		if (cmp == 0) {
++			found = true;
++			break;
++		}
++		if (cmp > 0) {  /* key > p: move right */
++			base = entry + 1;
++			lim--;
++		}               /* else move left */
++	}
++
++	if (found) {
++		*hash_type = entry->hash_type;
++		*flags = entry->flags;
++		return true;
++	}
++
++	return false;
++}
++
++
++uint32_t
++lookup_in_static_trust_cache(const uint8_t cdhash[CS_CDHASH_LEN])
++{
++	if (static_caches) {
++		for (uint32_t i = 0; i < static_caches->num_caches; i++) {
++			const struct trust_cache_module1 *module = (const void *)
++			    ((const uint8_t *)static_caches + static_caches->offsets[i]);
++			uint8_t hash_type, flags;
++			if (lookup_in_trust_cache_module(module, cdhash, &hash_type, &flags)) {
++				return ((uint32_t)hash_type << TC_LOOKUP_HASH_TYPE_SHIFT) |
++				    ((uint32_t)flags << TC_LOOKUP_FLAGS_SHIFT) | TC_LOOKUP_FOUND;
++			}
++		}
++	}
++	if (!no_legacy_static_cache && legacy_buckets && legacy_hashes) {
++		const struct legacy_trust_cache_bucket *bucket = &legacy_buckets[cdhash[0]];
++		for (uint32_t i = 0; i < bucket->count; i++) {
++			if (!memcmp(cdhash + 1, legacy_hashes[bucket->offset + i], LEGACY_TRUST_CACHE_ENTRY_LEN)) {
++				return TC_LOOKUP_FOUND | TC_LOOKUP_FALLBACK;
++			}
++		}
++	}
++	return 0;
++}
++
++uint32_t
++pmap_lookup_in_static_trust_cache(const uint8_t cdhash[CS_CDHASH_LEN])
++{
++	return lookup_in_static_trust_cache(cdhash);
++}
++
++void
++pmap_initialize_legacy_static_trust_cache(const struct legacy_trust_cache_bucket *buckets,
++    size_t bucket_size, const pmap_cs_legacy_stc_entry *hashes, size_t hash_size)
++{
++	if (legacy_buckets || legacy_hashes || !buckets || !hashes ||
++	    bucket_size < LEGACY_TRUST_CACHE_BUCKET_COUNT * sizeof(*buckets)) {
++		panic("TrustCache: invalid legacy static cache");
++	}
++	for (uint32_t i = 0; i < LEGACY_TRUST_CACHE_BUCKET_COUNT; i++) {
++		if ((size_t)buckets[i].offset + buckets[i].count > hash_size / sizeof(*hashes)) {
++			panic("TrustCache: legacy bucket %u outside table", i);
++		}
++	}
++	legacy_hashes = hashes;
++	legacy_buckets = buckets;
++}
++
++bool
++pmap_is_trust_cache_loaded(const uuid_t uuid)
++{
++	bool found = false;
++	lck_rw_lock_shared(&loaded_cache_lock);
++	for (struct loaded_legacy_trust_cache *module = loaded_caches; module; module = module->next) {
++		if (!memcmp(module->uuid, uuid, sizeof(uuid_t))) {
++			found = true;
++			break;
++		}
++	}
++	lck_rw_unlock_shared(&loaded_cache_lock);
++	return found;
++}
++
++kern_return_t
++pmap_load_legacy_trust_cache(const void *data, size_t size)
++{
++	if (!data || size < sizeof(struct loaded_legacy_trust_cache)) {
++		return KERN_INVALID_ARGUMENT;
++	}
++	const struct loaded_legacy_trust_cache *input = data;
++	if (input->count > (size - sizeof(*input)) / sizeof(trust_cache_hash0)) {
++		return KERN_INVALID_ARGUMENT;
++	}
++	size_t bytes = sizeof(*input) + input->count * sizeof(trust_cache_hash0);
++	struct loaded_legacy_trust_cache *copy = kalloc(bytes);
++	if (!copy) {
++		return KERN_RESOURCE_SHORTAGE;
++	}
++	memcpy(copy, input, bytes);
++	lck_rw_lock_exclusive(&loaded_cache_lock);
++	for (struct loaded_legacy_trust_cache *module = loaded_caches; module; module = module->next) {
++		if (!memcmp(module->uuid, copy->uuid, sizeof(uuid_t))) {
++			lck_rw_unlock_exclusive(&loaded_cache_lock);
++			kfree(copy, bytes);
++			return KERN_ALREADY_IN_SET;
++		}
++	}
++	copy->next = loaded_caches;
++	loaded_caches = copy;
++	lck_rw_unlock_exclusive(&loaded_cache_lock);
++	return KERN_SUCCESS;
++}
++
++bool
++pmap_lookup_in_loaded_trust_caches(const uint8_t cdhash[CS_CDHASH_LEN])
++{
++	bool found = false;
++	lck_rw_lock_shared(&loaded_cache_lock);
++	for (struct loaded_image4_trust_cache *cache = image4_caches; cache; cache = cache->next) {
++		uint8_t hash_type, flags;
++		if (lookup_in_trust_cache_module(&cache->module, cdhash, &hash_type, &flags)) {
++			found = true;
++			break;
++		}
++	}
++	for (struct loaded_legacy_trust_cache *module = loaded_caches; !found && module; module = module->next) {
++		for (uint32_t i = 0; i < module->count; i++) {
++			if (!memcmp(cdhash, module->hashes[i], CS_CDHASH_LEN)) {
++				found = true;
++				break;
++			}
++		}
++		if (found) {
++			break;
++		}
++	}
++	lck_rw_unlock_shared(&loaded_cache_lock);
++	return found;
++}
++
++int
++pmap_load_image4_trust_cache(void *buffer, size_t allocation_size, uint32_t validate_only)
++{
++	struct image4_cache_input {
++		void *next;
++		const struct trust_cache_module1 *module;
++		size_t image_size;
++		uint8_t image[];
++	};
++	if (allocation_size > 0x10000000) {
++		return -6;
++	}
++	if (!buffer || ((uintptr_t)buffer & PAGE_MASK) || (allocation_size & PAGE_MASK) ||
++	    allocation_size < sizeof(struct image4_cache_input)) {
++		return EINVAL;
++	}
++	struct image4_cache_input *input = buffer;
++	if (input->image_size > allocation_size - sizeof(*input)) {
++		return EINVAL;
++	}
++	// Dynamic caches are accepted only through a registered Image4 verifier and platform environment.
++	if (!img4if || img4if->i4if_version < 1 || !img4if->i4if_v1.environment_platform) {
++		return ENOTSUP;
++	}
++	img4_t image;
++	int error = img4if->i4if_init(&image, 0, input->image, input->image_size, NULL);
++	if (error) {
++		return error == EILSEQ ? -1 : error;
++	}
++	const uint8_t *payload = NULL;
++	size_t payload_size = 0;
++	error = img4if->i4if_get_trusted_payload(&image, 0x6c747273,
++	    img4if->i4if_v1.environment_platform, NULL, &payload, &payload_size);
++	if (error) {
++		goto out;
++	}
++	if (payload_size < sizeof(struct trust_cache_module1)) {
++		error = -2;
++		goto out;
++	}
++	const struct trust_cache_module1 *module = (const void *)payload;
++	if (module->version != 1) {
++		error = -4;
++		goto out;
++	}
++	if (module->num_entries > (payload_size - sizeof(*module)) / sizeof(struct trust_cache_entry1)) {
++		error = -3;
++		goto out;
++	}
++	for (uint32_t i = 0; i < module->num_entries; i++) {
++		const struct trust_cache_entry1 *entry = &module->entries[i];
++		if (i && memcmp(entry[-1].cdhash, entry->cdhash, CS_CDHASH_LEN) > 0) {
++			error = EINVAL;
++			goto out;
++		}
++	}
++	size_t module_size = sizeof(*module) + module->num_entries * sizeof(struct trust_cache_entry1);
++	size_t bytes = sizeof(struct loaded_image4_trust_cache) + module_size - sizeof(*module);
++	struct loaded_image4_trust_cache *copy = NULL;
++	if (!validate_only) {
++		copy = kalloc(bytes);
++		if (!copy) {
++			error = ENOMEM;
++			goto out;
++		}
++		memcpy(&copy->module, module, module_size);
++	}
++	lck_rw_lock_exclusive(&loaded_cache_lock);
++	for (struct loaded_image4_trust_cache *cache = image4_caches; cache; cache = cache->next) {
++		if (!memcmp(cache->module.uuid, module->uuid, sizeof(uuid_t))) {
++			lck_rw_unlock_exclusive(&loaded_cache_lock);
++			if (copy) {
++				kfree(copy, bytes);
++			}
++			error = -5;
++			goto out;
++		}
++	}
++	input->module = module;
++	if (copy) {
++		copy->next = image4_caches;
++		image4_caches = copy;
++	}
++	lck_rw_unlock_exclusive(&loaded_cache_lock);
++out:
++	img4if->i4if_destroy(&image);
++	return error;
++}
++#endif

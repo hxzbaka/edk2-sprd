@@ -1,0 +1,22 @@
+--- a/ArmCpu.cpp
++++ b/ArmCpu.cpp
+@@ -8,7 +8,9 @@
+ #include <pexpert/pexpert.h>
+ 
+ extern "C" void rtclock_intr (unsigned int);
+ extern "C" uint64_t armcpu_spi_count (uint32_t intid);
++extern "C" IOReturn armcpu_spi_attach (uint32_t, bool, void (*) (void *), void *, uint32_t *, uint64_t *);
++extern "C" bool sprd_dpu_console_start_interrupts (IOReturn (*) (uint32_t, bool, void (*) (void *), void *, uint32_t *, uint64_t *));
+ 
+ static const unsigned kGicdControl = 0;
+ static const unsigned kGicdType = 4;
+@@ -215,6 +217,9 @@
+     panic ("ArmCpu: CPU IRQ registration failed");
+   }
+   initCPU (true);
++  if (!sprd_dpu_console_start_interrupts (armcpu_spi_attach)) {
++    panic ("ArmCpu: display interrupt registration failed");
++  }
+   armcpu_registered = 1;
+   registerService ();
+   return true;

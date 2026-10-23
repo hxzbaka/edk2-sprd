@@ -3,10 +3,8 @@
 #include <Library/ArmLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/CacheMaintenanceLib.h>
-#include <Library/HobLib.h>
 #include <Library/SerialPortLib.h>
 
-#include <Resources/FbColor.h>
 #include <Resources/font5x12.h>
 
 #include "Library/FrameBufferSerialPortLib.h"
@@ -17,7 +15,6 @@
 #define DPU_LAYER_FORMAT_MASK (0xFU << 4)
 #define DPU_LAYER_BGRA8888 (2U << 4)
 
-// RGB565 Color Definitions
 #define RGB565_BLACK 0x0000
 #define RGB565_WHITE 0xFFFF
 #define RGB565_YELLOW 0xFFE0
@@ -32,7 +29,6 @@ FBCON_COLOR    m_Color;
 BOOLEAN        m_Initialized = FALSE;
 
 UINTN gWidth = FixedPcdGet32(PcdMipiFrameBufferWidth);
-// Reserve half screen for output
 UINTN gHeight = FixedPcdGet32(PcdMipiFrameBufferHeight);
 UINTN gBpp    = 16;
 UINTN delay = FixedPcdGet32(PcdMipiFrameBufferDelay);
@@ -72,7 +68,6 @@ FbConWritePixel (
   }
 }
 
-// Internal helpers
 void FbConPutCharWithFactor(char c, int type, unsigned scale_factor);
 
 void FbConDrawglyph(
@@ -80,7 +75,6 @@ void FbConDrawglyph(
     unsigned scale_factor);
 
 void FbConReset(void);
-void FbConScrollUp(void);
 void FbConFlush(void);
 
 STATIC
@@ -109,19 +103,15 @@ SerialPortInitialize(VOID)
 {
   UINTN InterruptState = 0;
 
-  // Prevent dup initialization
   if (m_Initialized)
     return RETURN_SUCCESS;
 
-  // Interrupt Disable
   InterruptState = ArmGetInterruptState();
   ArmDisableInterrupts();
 
-  // Reset console
   FbConSyncFormat();
   FbConReset();
 
-  // Set flag
   m_Initialized = TRUE;
 
   if (InterruptState)
@@ -145,11 +135,9 @@ void ResetFb(void)
 
 void FbConReset(void)
 {
-  // Reset position.
   m_Position.x = 0;
   m_Position.y = 0;
 
-  // Calc max position.
   m_MaxPosition.x = gWidth / (FONT_WIDTH + 1);
   m_MaxPosition.y = (gHeight - 1) / FONT_HEIGHT;
 
@@ -184,7 +172,6 @@ paint:
     }
   }
 
-  // Suppress leading spaces (except for special message types)
   if (m_Position.x == 0 && (unsigned char)c == ' ' &&
       type != FBCON_SUBTITLE_MSG && type != FBCON_TITLE_MSG)
     return;
@@ -222,7 +209,6 @@ newline:
     goto paint;
   }
   else {
-    // Clear the new line's background
     Pixels = (char *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress);
     Pixels += m_Position.y * (FONT_HEIGHT * gWidth * BytesPerPixel);
     ZeroMem(Pixels, (FONT_HEIGHT * gWidth * BytesPerPixel) * scale_factor);
@@ -232,7 +218,6 @@ newline:
   }
 }
 
-// Draw a single glyph into the pixel buffer.
 void FbConDrawglyph(
     char *pixels, unsigned stride, unsigned bpp, unsigned *glyph,
     unsigned scale_factor)
@@ -244,8 +229,6 @@ void FbConDrawglyph(
   unsigned x, y, i, j;
   unsigned data, temp;
 
-  // Each character is FONT_HEIGHT tall, glyph[0] upper half, glyph[1] lower
-  // half. First, fill the entire glyph cell with background color.
   for (y = 0; y < FONT_HEIGHT; y++) {
     for (i = 0; i < scale_factor; i++) {
       for (x = 0; x < FONT_WIDTH; ++x) {
@@ -254,12 +237,10 @@ void FbConDrawglyph(
           pixel_ptr += bpp;
         }
       }
-      // Move to next line: stride is display width, subtract drawn width
       pixel_ptr += (stride - (FONT_WIDTH * scale_factor)) * bpp;
     }
   }
 
-  // Reset pointer to beginning of cell
   pixel_ptr = (UINT8 *)pixels;
 
   data = glyph[0];
@@ -275,12 +256,10 @@ void FbConDrawglyph(
           }
         }
         else {
-          // Skip background pixels (already painted)
           pixel_ptr += scale_factor * bpp;
         }
         data >>= 1;
       }
-      // Next scaled line
       pixel_ptr += (stride - (FONT_WIDTH * scale_factor)) * bpp;
     }
   }
@@ -307,20 +286,6 @@ void FbConDrawglyph(
   }
 }
 
-// Scroll the framebuffer up by one text row.
-void FbConScrollUp(void)
-{
-  UINT8 *Dst = (UINT8 *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress);
-  UINTN BytesPerPixel = FbConBytesPerPixel();
-  UINTN RowSize = gWidth * BytesPerPixel;
-  UINTN CopySize = (gHeight - FONT_HEIGHT) * RowSize;
-
-  CopyMem(Dst, Dst + FONT_HEIGHT * RowSize, CopySize);
-  ZeroMem(Dst + CopySize, FONT_HEIGHT * RowSize);
-
-  FbConFlush();
-}
-
 void FbConFlush(void)
 {
   UINTN BytesPerPixel = FbConBytesPerPixel();
@@ -329,6 +294,7 @@ void FbConFlush(void)
       (void *)(UINTN)FixedPcdGet32(PcdMipiFrameBufferAddress),
       gWidth * gHeight * BytesPerPixel);
 
+#ifndef FBCON_DRIVER_MANAGED_REFRESH
   if (FixedPcdGetBool(PcdDisplayCmdMode)) {
     UINT32 DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
     UINT32 DoneBit = FixedPcdGet32(PcdDpuIntDoneBit);
@@ -342,6 +308,7 @@ void FbConFlush(void)
     MmioOr32(DpuBase + FixedPcdGet32(PcdDpuCtrlReg), BIT0);
     MicroSecondDelay(1000);
   }
+#endif
 }
 
 UINTN
@@ -416,5 +383,4 @@ UINTN SerialPortFlush(VOID) { return 0; }
 
 VOID EnableSynchronousSerialPortIO(VOID)
 {
-  // Already synchronous
 }

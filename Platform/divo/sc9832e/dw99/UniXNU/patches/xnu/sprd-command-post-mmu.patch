@@ -1,0 +1,112 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -39,21 +39,24 @@
+ 
+ 
+ #if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
+-// The interrupt stack is addressed physically until the bootstrap MMU is enabled.
+-.macro SPRD_BOOT_MARKER color
++// PC-relative addressing selects a mapped stack alias on either side of MMU enable.
++.macro SPRD_BOOT_CALL function
+ 	mov		x27, sp
+ 	mov		x28, lr
+ 	adrp	x16, EXT(intstack_top)@page
+ 	add		x16, x16, EXT(intstack_top)@pageoff
+ 	mov		sp, x16
+ 	mov		x0, x20
+-	mov		w1, #(\color & 0xffff)
+-	movk	w1, #(\color >> 16), lsl #16
+-	bl		EXT(sprd_dpu_boot_marker)
++	bl		\function
+ 	cbz		w0, Lsprd_boot_marker_failed
+ 	mov		sp, x27
+ 	mov		lr, x28
+ 	mov		x0, x20
++.endmacro
++.macro SPRD_BOOT_MARKER color
++	mov		w1, #(\color & 0xffff)
++	movk	w1, #(\color >> 16), lsl #16
++	SPRD_BOOT_CALL EXT(sprd_dpu_boot_marker)
+ .endmacro
+ #else
+ .macro SPRD_BOOT_MARKER color
+@@ -633,6 +636,10 @@
+ 	// With the MMU off, pool exhaustion cannot use the kernel panic path.
+ 	b Lbootstrap_tables_exhausted
+ Lbootstrap_tables_ready:
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	mov		x1, x2
++	SPRD_BOOT_CALL EXT(sprd_dpu_boot_map)
++#endif
+ 	/* Ensure TTEs are visible */
+ 	dsb		ish
+ 
+@@ -774,6 +781,12 @@
+ 	orr		x0, x0, x1
+ 	MSR_SCTLR_EL1_X0
+ 	isb		sy
++
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	cbnz	x21, Lsprd_boot_mmu_enabled_done
++	SPRD_BOOT_MARKER 0xffff8000
++Lsprd_boot_mmu_enabled_done:
++#endif
+ 
+ #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
+ 	/* Watchtower
+diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
+--- a/osfmk/arm64/proc_reg.h
++++ b/osfmk/arm64/proc_reg.h
+@@ -199,7 +199,12 @@
+  * System Control Register (SCTLR)
+  */
+ 
++#if __ARM_PAN_AVAILABLE__
+ #define SCTLR_RESERVED			((3 << 28) | (1 << 22) | (1 << 20) | (1 << 11))
++#else
++// Without FEAT_PAN, SCTLR_EL1 bit 23 is RES1.
++#define SCTLR_RESERVED			((3 << 28) | SCTLR_PAN_UNCHANGED | (1 << 22) | (1 << 20) | (1 << 11))
++#endif
+ 
+ // 26		UCI		User Cache Instructions
+ #define SCTLR_UCI_ENABLED		(1 << 26)
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -39,6 +39,9 @@
+ #include <kern/processor.h>
+ #include <kern/startup.h>
+ #include <kern/debug.h>
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++#include <console/sprd_dpu_console.h>
++#endif
+ #include <prng/random.h>
+ #include <machine/machine_routines.h>
+ #include <machine/commpage.h>
+@@ -211,6 +214,12 @@
+ 	thread_t        thread;
+ 	processor_t     my_master_proc;
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	if (!sprd_dpu_boot_marker(args, 0xff808080)) {
++		for (;;) { __asm__ volatile("wfe"); }
++	}
++#endif
++
+     // rebase and sign jops
+ 	if (&__thread_starts_sect_end[0] != &__thread_starts_sect_start[0])
+ 	{
+@@ -228,6 +237,12 @@
+ 	cpu_data_init(&BootCpuData);
+ 
+ 	PE_init_platform(FALSE, args); /* Get platform expert set up */
++
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	if (!sprd_dpu_boot_marker(args, 0xffffff00)) {
++		for (;;) { __asm__ volatile("wfe"); }
++	}
++#endif
+ 
+ #if __arm64__
+ 

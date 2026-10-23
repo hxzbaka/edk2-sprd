@@ -46,6 +46,8 @@ function _load_platform_hooks(){
 
 function _build(){
 	local DEVICE="${1}"
+	local PACKAGES_PATH="${PACKAGES_PATH}"
+	export PACKAGES_PATH
 	shift
 	source "${_EDK2}/edksetup.sh"
 	[ -d "${WORKSPACE}" ]||mkdir "${WORKSPACE}"
@@ -54,6 +56,10 @@ function _build(){
 
 	SPLIT_DSDT=false
 	EXT=""
+	ENABLE_UNIXNU=FALSE
+	UNIXNU_PACKAGE_PATHS=()
+	UNIXNU_PATCH_REPOSITORIES=()
+	UNIXNU_PATCH_FILES=()
 
 	if [ -f "configs/devices/${DEVICE}.conf" ]
 	then source "configs/devices/${DEVICE}.conf"
@@ -66,6 +72,11 @@ function _build(){
 	fi
 	# for overriding config
 	source "configs/devices/${DEVICE}.conf"
+	if [ "${ENABLE_UNIXNU}" = TRUE ]; then
+		for unixnu_package_path in "${UNIXNU_PACKAGE_PATHS[@]}"; do
+			PACKAGES_PATH="${PACKAGES_PATH}:${ROOTDIR}/${unixnu_package_path}"
+		done
+	fi
 
 	if "${GEN_INSTALLER_ZIP}"
 	then
@@ -129,6 +140,24 @@ function _build(){
                else
                   RAM=""
                 fi
+	(
+		if [ "${ENABLE_UNIXNU}" = TRUE ]; then
+			unixnu_applied_patches=()
+			trap '
+				unixnu_cleanup_status=0
+				for ((unixnu_patch_position=${#unixnu_applied_patches[@]} - 1; unixnu_patch_position>=0; unixnu_patch_position--)); do
+					unixnu_patch_index=${unixnu_applied_patches[unixnu_patch_position]}
+					git -C "${ROOTDIR}/${UNIXNU_PATCH_REPOSITORIES[unixnu_patch_index]}" apply --reverse "${ROOTDIR}/${UNIXNU_PATCH_FILES[unixnu_patch_index]}" || unixnu_cleanup_status=$?
+				done
+				if [ "${unixnu_cleanup_status}" -ne 0 ]; then
+					exit "${unixnu_cleanup_status}"
+				fi
+			' EXIT
+			for unixnu_patch_index in "${!UNIXNU_PATCH_FILES[@]}"; do
+				git -C "${ROOTDIR}/${UNIXNU_PATCH_REPOSITORIES[unixnu_patch_index]}" apply "${ROOTDIR}/${UNIXNU_PATCH_FILES[unixnu_patch_index]}" || exit "$?"
+				unixnu_applied_patches+=("${unixnu_patch_index}")
+			done
+		fi
 	build \
 		-s \
 		-n 0 \
@@ -143,7 +172,8 @@ function _build(){
 		-D FD_BASE="${FD_BASE}" -D FD_SIZE="${FD_SIZE}" \
 		-D ENABLE_LINUX_UTILS="${ENABLE_LINUX_UTILS}" \
                                 ${RAM} \
-		||return "$?"
+		||exit "$?"
+	) ||return "$?"
 	_call_hook platform_build_kernel||return "$?"
 #	_call_hook platform_build_bootimg||return "$?"
 	echo "Build done: ${OUTDIR}/uefi-${DEVICE}-kernel"

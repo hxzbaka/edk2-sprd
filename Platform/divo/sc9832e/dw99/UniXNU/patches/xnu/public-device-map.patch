@@ -1,0 +1,52 @@
+diff --git a/makedefs/MakeInc.cmd b/makedefs/MakeInc.cmd
+index 3f6f713..eb05457 100644
+--- a/makedefs/MakeInc.cmd
++++ b/makedefs/MakeInc.cmd
+@@ -127,9 +127,6 @@ SUPPORTED_PLATFORMS := MacOSX $(SUPPORTED_SIMULATOR_PLATFORMS) $(SUPPORTED_EMBED
+ 
+ # Platform-specific tools
+ ifneq ($(filter $(SUPPORTED_EMBEDDED_PLATFORMS),$(PLATFORM)),)
+-ifeq ($(EMBEDDED_DEVICE_MAP),)
+-	export EMBEDDED_DEVICE_MAP := $(shell $(XCRUN) -sdk $(SDKROOT) -find embedded_device_map)
+-endif
+ EDM_DBPATH ?= $(PLATFORMPATH)/usr/local/standalone/firmware/device_map.db
+ endif
+ 
+diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
+index 73f7cdc..c397d20 100644
+--- a/makedefs/MakeInc.def
++++ b/makedefs/MakeInc.def
+@@ -201,6 +201,9 @@ ARCH_FLAGS_X86_64H	  = -arch x86_64h
+ ifneq ($(filter ARM ARM64,$(CURRENT_ARCH_CONFIG)),)
+ 
+ ifndef ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG
++ifeq ($(EMBEDDED_DEVICE_MAP),)
++export EMBEDDED_DEVICE_MAP := $(shell $(XCRUN) -sdk $(SDKROOT) -find embedded_device_map)
++endif
+ export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := $(shell $(EMBEDDED_DEVICE_MAP) -db $(EDM_DBPATH) -query SELECT DISTINCT KernelMachOArchitecture FROM Targets WHERE KernelPlatform IS \"$(CURRENT_MACHINE_CONFIG_LC)\" LIMIT 1 || echo UNKNOWN )
+ endif
+ 
+diff --git a/makedefs/MakeInc.top b/makedefs/MakeInc.top
+index 6d9bcf1..b69bc37 100644
+--- a/makedefs/MakeInc.top
++++ b/makedefs/MakeInc.top
+@@ -131,6 +131,10 @@ ARCH_CONFIGS_EMBEDDED := $(strip $(shell echo $(ARCH_CONFIGS) | $(TR) a-z A-Z))
+ endif
+ 
+ # Find supported products from the device map
++ifneq ($(strip $(PRODUCT_CONFIGS) $(filter %_embedded,$(MAKECMDGOALS))),)
++ifeq ($(EMBEDDED_DEVICE_MAP),)
++export EMBEDDED_DEVICE_MAP := $(shell $(XCRUN) -sdk $(SDKROOT) -find embedded_device_map)
++endif
+ DEVICEMAP_PRODUCTS_ARMV7  := $(shell $(EMBEDDED_DEVICE_MAP) -db $(EDM_DBPATH)		\
+ 				-query 'SELECT DISTINCT TargetType			\
+ 					FROM Files					\
+@@ -186,6 +190,8 @@ function_lookup_product_alias = $(call function_substitute_word_with_replacement
+ 				 )
+ endif
+ 
++endif
++
+ ifeq ($(PLATFORM),MacOSX)
+ 
+ # Defaults for "make all_desktop"

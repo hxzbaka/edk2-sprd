@@ -13,6 +13,7 @@
 [Packages]
   MdePkg/MdePkg.dec
   Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+  Silicon/Spreadtrum/sc9832e/sc9832e.dec
 
 [LibraryClasses]
   UefiDriverEntryPoint
@@ -24,6 +25,12 @@
 
 [Protocols]
   gSprdGpioProtocolGuid
+
+[FixedPcd]
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank0BaseAddress
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank1BaseAddress
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank2BaseAddress
+  gsc9832ePkgTokenSpaceGuid.PcdAdiBaseAddress
 
 [Pcd]
   gSprdTokenSpaceGuid.PcdApGpioBaseAddress

@@ -1,0 +1,15 @@
+diff --git a/osfmk/arm64/caches_asm.s b/osfmk/arm64/caches_asm.s
+index a673aba..da78bbf 100644
+--- a/osfmk/arm64/caches_asm.s
++++ b/osfmk/arm64/caches_asm.s
+@@ -181,6 +181,10 @@ L_cpudr_loop:
+  */
+ 	.text
+ 	.align 2
++#if !defined(APPLE_ARM64_ARCH_FAMILY)
++	.globl EXT(CleanPoC_DcacheRegion_Force_nopreempt_nohid)
++LEXT(CleanPoC_DcacheRegion_Force_nopreempt_nohid)
++#endif
+ LEXT(CleanPoC_DcacheRegion_internal)
+ 	ARM64_STACK_PROLOG
+ 	PUSH_FRAME

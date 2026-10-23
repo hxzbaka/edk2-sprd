@@ -1,0 +1,133 @@
+diff --git a/osfmk/console/sprd_dpu_console.c b/osfmk/console/sprd_dpu_console.c
+index 20f040e..f9fe4f7 100644
+--- a/osfmk/console/sprd_dpu_console.c
++++ b/osfmk/console/sprd_dpu_console.c
+@@ -7,6 +7,8 @@
+ #include <machine/machine_routines.h>
+ #include <pexpert/device_tree.h>
+ #if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++#include <arm/pmap.h>
++#include <arm64/proc_reg.h>
+ #include <pexpert/arm64/boot.h>
+ #endif
+ #include <string.h>
+@@ -91,6 +93,9 @@ submit_frame(void)
+ }
+ 
+ #if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++static uint64_t boot_dpu_physical;
++static uint64_t boot_dpu_register_size;
++
+ static uint64_t
+ boot_dt_u64(const void *property, unsigned index)
+ {
+@@ -119,7 +124,9 @@ sprd_dpu_boot_marker(boot_args *args, uint32_t color)
+ 	    args->physBase > UINT64_MAX - tree_offset) {
+ 		return false;
+ 	}
+-	DTInit((void *)(args->physBase + tree_offset));
++	uint64_t control;
++	__asm__ volatile("mrs %0, sctlr_el1" : "=r" (control));
++	DTInit((void *)((control & SCTLR_M_ENABLED) ? tree_virtual : args->physBase + tree_offset));
+ 	if (DTLookupEntry(NULL, "/arm-io/dpu", &entry) != kSuccess ||
+ 	    DTGetProperty(entry, "compatible", &property, &size) != kSuccess ||
+ 	    size != sizeof("sprd,dpu-lite-r1p0")) {
+@@ -199,11 +206,86 @@ sprd_dpu_boot_marker(boot_args *args, uint32_t color)
+ 	}
+ 	submit_frame();
+ 	success = wait_done();
++	if (success) {
++		boot_dpu_physical = base;
++		boot_dpu_register_size = regions[1];
++	}
+ out:
+ 	framebuffer = 0;
+ 	dpu_base = 0;
+ 	return success;
+ }
++
++bool
++sprd_dpu_boot_map(boot_args *args, uint64_t last_table)
++{
++	uint64_t root = args->topOfKernelData;
++	if (!boot_dpu_physical || !boot_dpu_register_size || (root & ARM_PGMASK) ||
++	    root < args->physBase || args->memSize < BOOTSTRAP_TABLE_SIZE ||
++	    root - args->physBase > args->memSize - BOOTSTRAP_TABLE_SIZE ||
++	    root > UINT64_MAX - BOOTSTRAP_TABLE_SIZE) {
++		return false;
++	}
++	uint64_t pool_end = root + BOOTSTRAP_TABLE_SIZE;
++	if ((last_table & ARM_PGMASK) || last_table < root + ARM_PGBYTES ||
++	    last_table > pool_end - ARM_PGBYTES) {
++		return false;
++	}
++	// Bootstrap assembly reports the last allocated table, not the next free page.
++	uint64_t next_table = last_table + ARM_PGBYTES;
++	uint64_t starts[] = { boot_dpu_physical, args->Video.v_baseAddr };
++	uint64_t lengths[] = { boot_dpu_register_size, framebuffer_size };
++	uint64_t attributes[] = {
++		ARM_PTE_ATTRINDX(CACHE_ATTRINDX_DISABLE),
++		ARM_PTE_ATTRINDX(CACHE_ATTRINDX_WRITECOMB),
++	};
++	for (unsigned range = 0; range < 2; range++) {
++		if (!lengths[range] || starts[range] > UINT64_MAX - lengths[range] ||
++		    starts[range] + lengths[range] > UINT64_MAX - ARM_PGMASK) {
++			return false;
++		}
++		uint64_t end = (starts[range] + lengths[range] + ARM_PGMASK) & ~(uint64_t)ARM_PGMASK;
++		uint64_t address_mask = ARM_TT_L1_INDEX_MASK | ARM_TT_L2_INDEX_MASK | ARM_TT_L3_INDEX_MASK | ARM_PGMASK;
++		if ((end - 1) & ~address_mask) {
++			return false;
++		}
++		for (uint64_t page = starts[range] & ~(uint64_t)ARM_PGMASK; page < end; page += ARM_PGBYTES) {
++			volatile uint64_t *table = (volatile uint64_t *)root;
++			uint64_t indices[] = { L1_TABLE_INDEX(page), L2_TABLE_INDEX(page) };
++			for (unsigned level = 0; level < 2; level++) {
++				volatile uint64_t *entry = &table[indices[level]];
++				uint64_t descriptor = *entry;
++				if (descriptor & ARM_TTE_VALID) {
++					if ((descriptor & ARM_TTE_TYPE_MASK) != ARM_TTE_TYPE_TABLE) {
++						return false;
++					}
++					uint64_t child = descriptor & ARM_TTE_TABLE_MASK;
++					if (child < root || child >= next_table) {
++						return false;
++					}
++					table = (volatile uint64_t *)child;
++				} else {
++					if (next_table == pool_end) {
++						return false;
++					}
++					*entry = next_table | ARM_TTE_BOOT_TABLE;
++					table = (volatile uint64_t *)next_table;
++					next_table += ARM_PGBYTES;
++				}
++			}
++			volatile uint64_t *entry = &table[L3_TABLE_INDEX(page)];
++			uint64_t descriptor = (page & ARM_PTE_PAGE_MASK) | ARM_PTE_TYPE_VALID |
++			    ARM_PTE_AP(AP_RWNA) | ARM_PTE_AF | ARM_PTE_PNX | ARM_PTE_NX |
++			    ARM_PTE_SH(SH_OUTER_MEMORY) | attributes[range];
++			if ((*entry & ARM_TTE_VALID) && *entry != descriptor) {
++				return false;
++			}
++			*entry = descriptor;
++		}
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++	return true;
++}
+ #endif
+ 
+ void
+diff --git a/osfmk/console/sprd_dpu_console.h b/osfmk/console/sprd_dpu_console.h
+index a830b71..6c21059 100644
+--- a/osfmk/console/sprd_dpu_console.h
++++ b/osfmk/console/sprd_dpu_console.h
+@@ -11,6 +11,7 @@ typedef int32_t (*sprd_dpu_spi_register_t)(uint32_t, bool, void (*)(void *), voi
+ #if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
+ struct boot_args;
+ bool sprd_dpu_boot_marker(struct boot_args *, uint32_t);
++bool sprd_dpu_boot_map(struct boot_args *, uint64_t);
+ #endif
+ 
+ #if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE

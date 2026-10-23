@@ -1,0 +1,86 @@
+--- a/kern/kern_support.c
++++ b/kern/kern_support.c
+@@ -78,6 +78,9 @@
+ #include <mach/mach_types.h>
+ #include <mach/semaphore.h>
+ #include <mach/sync_policy.h>
++#if defined(__arm64__)
++#include <mach/arm/thread_status.h>
++#endif
+ #include <mach/task.h>
+ #include <mach/vm_prot.h>
+ #include <kern/kern_types.h>
+@@ -327,6 +330,36 @@
+ 
+ 		(void)pthread_kern->thread_set_wq_state32(th, (thread_state_t)&state);
+ 	}
++#elif defined(__arm64__)
++	if (proc_is64bit_data(p)) {
++		arm_thread_state64_t state = {
++			.pc = (uint64_t)pthread_kern->proc_get_threadstart(p),
++			.x[0] = (uint64_t)user_pthread,
++			.x[1] = (uint64_t)th_thport,
++			.x[2] = (uint64_t)user_func,
++			.x[3] = (uint64_t)user_funcarg,
++			.x[4] = (uint64_t)user_stack,
++			.x[5] = (uint64_t)flags,
++			.sp = (uint64_t)user_stack,
++		};
++		kret = pthread_kern->thread_set_wq_state64(th, (thread_state_t)&state);
++	} else {
++		arm_thread_state_t state = {
++			.pc = (uint32_t)pthread_kern->proc_get_threadstart(p),
++			.r[0] = (uint32_t)user_pthread,
++			.r[1] = (uint32_t)th_thport,
++			.r[2] = (uint32_t)user_func,
++			.r[3] = (uint32_t)user_funcarg,
++			.r[4] = (uint32_t)user_stack,
++			.r[5] = (uint32_t)flags,
++			.sp = (uint32_t)user_stack,
++		};
++		kret = pthread_kern->thread_set_wq_state32(th, (thread_state_t)&state);
++	}
++	if (kret != KERN_SUCCESS) {
++		error = EINVAL;
++		goto out;
++	}
+ #else
+ #error bsdthread_create  not defined for this architecture
+ #endif
+@@ -755,6 +788,36 @@
+ 			panic(__func__ ": thread_set_wq_state failed: %d", error);
+ 		}
+ 	}
++#elif defined(__arm64__)
++	kern_return_t error;
++	if (proc_is64bit_data(p)) {
++		arm_thread_state64_t state = {
++			.pc = (uint64_t)wqstart_fnptr,
++			.x[0] = (uint64_t)addrs->self,
++			.x[1] = (uint64_t)kport,
++			.x[2] = (uint64_t)addrs->stack_bottom,
++			.x[3] = (uint64_t)kevent_list,
++			.x[4] = (uint64_t)upcall_flags,
++			.x[5] = (uint64_t)kevent_count,
++			.sp = (uint64_t)addrs->stack_top,
++		};
++		error = pthread_kern->thread_set_wq_state64(th, (thread_state_t)&state);
++	} else {
++		arm_thread_state_t state = {
++			.pc = (uint32_t)wqstart_fnptr,
++			.r[0] = (uint32_t)addrs->self,
++			.r[1] = (uint32_t)kport,
++			.r[2] = (uint32_t)addrs->stack_bottom,
++			.r[3] = (uint32_t)kevent_list,
++			.r[4] = (uint32_t)upcall_flags,
++			.r[5] = (uint32_t)kevent_count,
++			.sp = (uint32_t)addrs->stack_top,
++		};
++		error = pthread_kern->thread_set_wq_state32(th, (thread_state_t)&state);
++	}
++	if (error != KERN_SUCCESS) {
++		panic("%s: thread_set_wq_state failed: %d", __func__, error);
++	}
+ #else
+ #error setup_wqthread  not defined for this architecture
+ #endif

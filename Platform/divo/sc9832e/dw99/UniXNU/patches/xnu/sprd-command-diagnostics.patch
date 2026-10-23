@@ -1,0 +1,153 @@
+diff --git a/osfmk/console/sprd_dpu_console.c b/osfmk/console/sprd_dpu_console.c
+index 115f921..dcd3f79 100644
+--- a/osfmk/console/sprd_dpu_console.c
++++ b/osfmk/console/sprd_dpu_console.c
+@@ -6,6 +6,9 @@
+ #include <kern/debug.h>
+ #include <machine/machine_routines.h>
+ #include <pexpert/device_tree.h>
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++#include <pexpert/arm64/boot.h>
++#endif
+ #include <string.h>
+ 
+ #define DPU_CTRL 0x0004
+@@ -87,6 +90,122 @@ submit_frame(void)
+ 	write_register(DPU_CTRL, read_register(DPU_CTRL) | DPU_RUN);
+ }
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++static uint64_t
++boot_dt_u64(const void *property, unsigned index)
++{
++	// Flattened DT values have four-byte alignment while MMU-off memory is Device.
++	const volatile uint32_t *words = property;
++	uint32_t low = words[index * 2];
++	uint32_t high = words[index * 2 + 1];
++	return (uint64_t)low | ((uint64_t)high << 32);
++}
++
++bool
++sprd_dpu_boot_marker(boot_args *args, uint32_t color)
++{
++	DTEntry entry, bus, chosen;
++	void *property;
++	unsigned int size;
++	uint64_t regions[2], ranges[3], dram_base, frequency;
++	uint32_t timeout_us;
++	bool success = false;
++	uint64_t tree_virtual = (uint64_t)args->deviceTreeP;
++	if (tree_virtual < args->virtBase) {
++		return false;
++	}
++	uint64_t tree_offset = tree_virtual - args->virtBase;
++	if (tree_offset >= args->memSize || args->deviceTreeLength > args->memSize - tree_offset ||
++	    args->physBase > UINT64_MAX - tree_offset) {
++		return false;
++	}
++	DTInit((void *)(args->physBase + tree_offset));
++	if (DTLookupEntry(NULL, "/arm-io/dpu", &entry) != kSuccess ||
++	    DTGetProperty(entry, "compatible", &property, &size) != kSuccess ||
++	    size != sizeof("sprd,dpu-lite-r1p0")) {
++		return false;
++	}
++	const volatile unsigned char *compatible = property;
++	static const char expected[] = "sprd,dpu-lite-r1p0";
++	for (unsigned i = 0; i < sizeof(expected); i++) {
++		if (compatible[i] != expected[i]) {
++			return false;
++		}
++	}
++	if (DTGetProperty(entry, "reg", &property, &size) != kSuccess || size != sizeof(regions)) {
++		return false;
++	}
++	regions[0] = boot_dt_u64(property, 0);
++	regions[1] = boot_dt_u64(property, 1);
++	if (DTLookupEntry(NULL, "/arm-io", &bus) != kSuccess ||
++	    DTGetProperty(bus, "ranges", &property, &size) != kSuccess || size != sizeof(ranges)) {
++		return false;
++	}
++	for (unsigned i = 0; i < 3; i++) {
++		ranges[i] = boot_dt_u64(property, i);
++	}
++	if (regions[1] < DPU_MMU_ENABLE + sizeof(uint32_t) || regions[0] < ranges[0] ||
++	    regions[0] - ranges[0] > ranges[2] || regions[1] > ranges[2] - (regions[0] - ranges[0]) ||
++	    ranges[1] > UINT64_MAX - (regions[0] - ranges[0])) {
++		return false;
++	}
++	uint64_t base = ranges[1] + regions[0] - ranges[0];
++	if (!base || (base & (sizeof(uint32_t) - 1)) || base > UINT64_MAX - regions[1]) {
++		return false;
++	}
++	if (DTGetProperty(entry, "frame-timeout-us", &property, &size) != kSuccess || size != sizeof(timeout_us)) {
++		return false;
++	}
++	timeout_us = *(const volatile uint32_t *)property;
++	__asm__ volatile("mrs %0, cntfrq_el0" : "=r" (frequency));
++	if (!timeout_us || !frequency || frequency > UINT64_MAX / timeout_us) {
++		return false;
++	}
++	timeout_ticks = frequency * timeout_us / 1000000;
++	if (!timeout_ticks || DTLookupEntry(NULL, "/chosen", &chosen) != kSuccess ||
++	    DTGetProperty(chosen, "dram-base", &property, &size) != kSuccess || size != sizeof(dram_base)) {
++		return false;
++	}
++	dram_base = boot_dt_u64(property, 0);
++	Boot_Video *video = &args->Video;
++	if (!video->v_baseAddr || (video->v_baseAddr & (sizeof(uint32_t) - 1)) ||
++	    video->v_depth != 32 || !video->v_width || !video->v_height ||
++	    video->v_width > UINT16_MAX || video->v_height > UINT16_MAX ||
++	    video->v_rowBytes % sizeof(uint32_t) || video->v_rowBytes / sizeof(uint32_t) < video->v_width ||
++	    video->v_rowBytes > UINT32_MAX / video->v_height || video->v_baseAddr < dram_base) {
++		return false;
++	}
++	framebuffer_size = (unsigned)(video->v_rowBytes * video->v_height);
++	if (video->v_baseAddr > UINT64_MAX - framebuffer_size || framebuffer_size < 16 * sizeof(uint32_t)) {
++		return false;
++	}
++	dpu_base = base;
++	uint32_t layer = read_register(DPU_LAYER_CONTROL);
++	if (!(read_register(DPU_CTRL) & DPU_COMMAND_MODE) || read_register(DPU_MMU_ENABLE) ||
++	    !(layer & DPU_LAYER_ENABLE) || (layer & DPU_LAYER_FORMAT_MASK) != DPU_LAYER_ARGB8888 ||
++	    read_register(DPU_LAYER_SIZE) != ((video->v_height << 16) | video->v_width) ||
++	    read_register(DPU_LAYER_PITCH) != video->v_rowBytes / sizeof(uint32_t) ||
++	    video->v_baseAddr - dram_base != read_register(DPU_LAYER_ADDRESS)) {
++		goto out;
++	}
++	write_register(DPU_INT_ENABLE, 0);
++	if (!wait_done()) {
++		goto out;
++	}
++	framebuffer = video->v_baseAddr;
++	volatile uint32_t *pixels = (volatile uint32_t *)framebuffer;
++	for (unsigned i = 0; i < framebuffer_size / 16 / sizeof(uint32_t); i++) {
++		pixels[i] = color;
++	}
++	submit_frame();
++	success = wait_done();
++out:
++	framebuffer = 0;
++	dpu_base = 0;
++	return success;
++}
++#endif
++
+ void
+ sprd_dpu_console_bind(vm_offset_t address, uint64_t physical, uint32_t width,
+     uint32_t height, uint32_t rowbytes, uint32_t depth)
+diff --git a/osfmk/console/sprd_dpu_console.h b/osfmk/console/sprd_dpu_console.h
+index be8d4ab..a830b71 100644
+--- a/osfmk/console/sprd_dpu_console.h
++++ b/osfmk/console/sprd_dpu_console.h
+@@ -8,6 +8,11 @@
+ 
+ typedef int32_t (*sprd_dpu_spi_register_t)(uint32_t, bool, void (*)(void *), void *, uint32_t *, uint64_t *);
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++struct boot_args;
++bool sprd_dpu_boot_marker(struct boot_args *, uint32_t);
++#endif
++
+ #if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
+ void sprd_dpu_console_bind(vm_offset_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t);
+ void sprd_dpu_console_flush(bool);

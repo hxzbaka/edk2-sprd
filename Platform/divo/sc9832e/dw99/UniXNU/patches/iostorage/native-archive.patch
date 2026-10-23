@@ -1,0 +1,598 @@
+diff --git a/IOBlockStorageDevice.h b/IOBlockStorageDevice.h
+--- a/IOBlockStorageDevice.h
++++ b/IOBlockStorageDevice.h
+@@ -226,7 +226,7 @@
+     virtual IOReturn	doLockUnlockMedia(bool doLock) __attribute__ ((deprecated));
+ #endif /* TARGET_OS_OSX && defined(__x86_64__) */
+ 
+-    virtual IOReturn	doSynchronizeCache(void) __attribute__ ((deprecated));
++    virtual IOReturn	doSynchronizeCache(void);
+ 
+     /*!
+      * @function getVendorString
+diff --git a/IOBlockStorageDriver.cpp b/IOBlockStorageDriver.cpp
+--- a/IOBlockStorageDriver.cpp
++++ b/IOBlockStorageDriver.cpp
+@@ -1841,8 +1841,8 @@
+         kStageDone
+     } _stage;
+ 
+-    virtual void free();
+-    virtual uint64_t getPreparationID( void );
++    virtual void free() override;
++    virtual uint64_t getPreparationID( void ) override;
+ 
+ public:
+ 
+@@ -1864,11 +1864,11 @@
+ 
+     virtual addr64_t getPhysicalSegment( IOByteCount   offset,
+                                          IOByteCount * length,
+-                                         IOOptionBits  options = 0 );
+-
+-    virtual IOReturn prepare(IODirection forDirection = kIODirectionNone);
+-
+-    virtual IOReturn complete(IODirection forDirection = kIODirectionNone);
++                                         IOOptionBits  options = 0 ) override;
++
++    virtual IOReturn prepare(IODirection forDirection = kIODirectionNone) override;
++
++    virtual IOReturn complete(IODirection forDirection = kIODirectionNone) override;
+ 
+     virtual bool getNextStage();
+ 
+@@ -2224,7 +2224,8 @@
+                         _chunksCount++;
+                         break;
+                     } 
+-                } // (fall thru)
++                }
++                [[clang::fallthrough]];
+ 
+                 case kStagePrepareExcessStart:
+                 {
+@@ -2253,7 +2254,8 @@
+                             break;
+                         }
+                     }
+-                } // (fall thru)
++                }
++                [[clang::fallthrough]];
+ 
+                 case kStagePrepareExcessFinal:
+                 {
+@@ -2635,7 +2637,7 @@
+ 
+     thread_call_t              _threadCallback;
+ 
+-    virtual void free();
++    virtual void free() override;
+ 
+ public:
+ 
+diff --git a/IOMediaBSDClient.cpp b/IOMediaBSDClient.cpp
+--- a/IOMediaBSDClient.cpp
++++ b/IOMediaBSDClient.cpp
+@@ -1214,7 +1214,7 @@
+     // dkread reads data from a device.
+     //
+ 
+-    struct dio dio = { dev, uio };
++    struct dio dio = { dev, uio, nullptr };
+ 
+     return dkreadwrite(&dio, DKRTYPE_DIO);
+ }
+@@ -1225,7 +1225,7 @@
+     // dkwrite writes data to a device.
+     //
+ 
+-    struct dio dio = { dev, uio };
++    struct dio dio = { dev, uio, nullptr };
+ 
+     return dkreadwrite(&dio, DKRTYPE_DIO);
+ }
+@@ -1264,7 +1264,7 @@
+             // This ioctl returns the preferred block size of the media object.
+             //
+ 
+-            *(uint32_t *)data = (uint32_t) minor->media->getPreferredBlockSize();
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = (uint32_t) minor->media->getPreferredBlockSize();
+ 
+         } break;
+ 
+@@ -1276,10 +1276,10 @@
+             //
+ 
+             if ( minor->media->getPreferredBlockSize() )
+-                *(uint64_t *)data = ( minor->media->getSize()               / 
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = ( minor->media->getSize()               / 
+                                       minor->media->getPreferredBlockSize() );
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1295,9 +1295,9 @@
+                                  /* key   */ kIOMaximumBlockCountReadKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1313,9 +1313,9 @@
+                                  /* key   */ kIOMaximumBlockCountWriteKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1331,9 +1331,9 @@
+                                  /* key   */ kIOMaximumByteCountReadKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1349,9 +1349,9 @@
+                                  /* key   */ kIOMaximumByteCountWriteKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1367,9 +1367,9 @@
+                                  /* key   */ kIOMaximumSegmentCountReadKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1385,9 +1385,9 @@
+                                  /* key   */ kIOMaximumSegmentCountWriteKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1403,9 +1403,9 @@
+                                  /* key   */ kIOMaximumSegmentByteCountReadKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1421,9 +1421,9 @@
+                                  /* key   */ kIOMaximumSegmentByteCountWriteKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1439,9 +1439,9 @@
+                                  /* key   */ kIOMinimumSegmentAlignmentByteCountKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1457,9 +1457,9 @@
+                                  /* key   */ kIOMaximumSegmentAddressableBitCountKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1475,9 +1475,9 @@
+                                  /* key   */ kIOPropertyPhysicalBlockSizeKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint32_t *)data = number->unsigned32BitValue();
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = number->unsigned32BitValue();
+             else
+-                *(uint32_t *)data = (uint32_t) minor->media->getPreferredBlockSize();
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = (uint32_t) minor->media->getPreferredBlockSize();
+ 
+         } break;
+ 
+@@ -1493,9 +1493,9 @@
+                                  /* key   */ kIOCommandPoolSizeKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint32_t *)data = number->unsigned32BitValue();
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = number->unsigned32BitValue();
+             else
+-                *(uint32_t *)data = 0;
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -1505,7 +1505,7 @@
+             // This ioctl returns truth if the media object is formatted.
+             //
+ 
+-            *(uint32_t *)data = minor->media->isFormatted();
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = minor->media->isFormatted();
+ 
+         } break;
+ 
+@@ -1515,7 +1515,7 @@
+             // This ioctl returns truth if the media object is writable.
+             //
+ 
+-            *(uint32_t *)data = minor->media->isWritable();
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = minor->media->isWritable();
+ 
+         } break;
+ 
+@@ -1615,7 +1615,7 @@
+             driver  = (IOBlockStorageDriver *) minor->media->getProvider();
+             driver  = OSDynamicCast(IOBlockStorageDriver, driver);
+             minors  = gIOMediaBSDClientGlobals.getMinors();
+-            request = (dk_format_capacity_t *) data;
++            request = static_cast<dk_format_capacity_t *>(static_cast<void *>(data));
+ 
+             if ( DKIOC_IS_RESERVED(data, 0xF000) )  { error = EINVAL;  break; }
+ 
+@@ -1712,8 +1712,8 @@
+ 
+             driver    = (IOBlockStorageDriver *) minor->media->getProvider();
+             driver    = OSDynamicCast(IOBlockStorageDriver, driver);
+-            request32 = (dk_format_capacities_32_t *) data;
+-            request64 = (dk_format_capacities_64_t *) data;
++            request32 = static_cast<dk_format_capacities_32_t *>(static_cast<void *>(data));
++            request64 = static_cast<dk_format_capacities_64_t *>(static_cast<void *>(data));
+ 
+             if ( proc_is64bit(proc) )
+             {
+@@ -1758,7 +1758,7 @@
+ 
+                 for ( UInt32 index = 0; index < capacitiesCount; index++ )
+                 {
+-                    dk_format_capacity_t capacity = { 0 };
++                    dk_format_capacity_t capacity = {};
+ 
+                     capacity.blockCount = capacities[index] / blockSize;
+                     capacity.blockSize  = (uint32_t) blockSize;
+@@ -1821,7 +1821,7 @@
+             dk_synchronize_t * request;
+             IOReturn           status;
+ 
+-            request = (dk_synchronize_t *) data;
++            request = static_cast<dk_synchronize_t *>(static_cast<void *>(data));
+ 
+             if ( kdebug_enable )
+             {
+@@ -1864,8 +1864,8 @@
+ 
+             assert(sizeof(dk_extent_t) == sizeof(IOStorageExtent));
+ 
+-            request32 = (dk_unmap_32_t *) data;
+-            request64 = (dk_unmap_64_t *) data;
++            request32 = static_cast<dk_unmap_32_t *>(static_cast<void *>(data));
++            request64 = static_cast<dk_unmap_64_t *>(static_cast<void *>(data));
+ 
+             if ( proc_is64bit(proc) )
+             {
+@@ -2005,7 +2005,7 @@
+             UInt32                     extentsCount;
+             dk_provision_status_t *    request;
+ 
+-            request = ( dk_provision_status_t *) data;
++            request = static_cast<dk_provision_status_t *>(static_cast<void *>(data));
+ 
+             extentsCount = request->extentsCount;
+             extentsCount = min ( extentsCount,  MAX_PROVISION_EXTENTS_COUNT );
+@@ -2086,9 +2086,9 @@
+                          /* object */ minor->media->getProperty(
+                                  /* key   */ kIOBSDUnitKey ) );
+             if ( number )
+-                *(uint32_t *)data = number->unsigned32BitValue();
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = number->unsigned32BitValue();
+             else
+-                *(uint32_t *)data = 0;
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -2098,8 +2098,8 @@
+             // This ioctl returns the open firmware path for this media object.
+             //
+ 
+-            int    l = sizeof(((dk_firmware_path_t *)data)->path);
+-            char * p = ((dk_firmware_path_t *)data)->path;
++            int    l = sizeof((static_cast<dk_firmware_path_t *>(static_cast<void *>(data)))->path);
++            char * p = (static_cast<dk_firmware_path_t *>(static_cast<void *>(data)))->path;
+ 
+             if ( minor->media->getPath(p, &l, gIODTPlane) && strchr(p, ':') )
+                 strlcpy(p, strchr(p, ':') + 1, l);     // (strip the plane name)
+@@ -2116,8 +2116,8 @@
+ #define kNVMeFatalErrorCodeKey                "Fatal Error Code"
+ #define kIOSATAQueueManagerTerminateReasonKey  "Terminate Reason"
+ 
+-            size_t l = ((dk_error_description_t *)data)->description_size;
+-            char * p = ((dk_error_description_t *)data)->description;
++            size_t l = (static_cast<dk_error_description_t *>(static_cast<void *>(data)))->description_size;
++            char * p = (static_cast<dk_error_description_t *>(static_cast<void *>(data)))->description;
+             OSObject  * obj;
+             OSString  * str;
+ 
+@@ -2145,7 +2145,7 @@
+                                  /* key   */ kIOPropertyDeviceCharacteristicsKey,
+                                  /* plane */ gIOServicePlane ) );
+ 
+-            *(uint32_t *)data = false;
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = false;
+ 
+             if ( dictionary )
+             {
+@@ -2155,7 +2155,7 @@
+                                  /* key   */ kIOPropertyMediumTypeKey ) );
+ 
+                 if ( string && string->isEqualTo(kIOPropertyMediumTypeSolidStateKey) )
+-                    *(uint32_t *)data = true;
++                    *static_cast<uint32_t *>(static_cast<void *>(data)) = true;
+             }
+ 
+         } break;
+@@ -2166,7 +2166,7 @@
+             // This ioctl returns truth if the device is virtual.
+             //
+ 
+-            *(uint32_t *)data = minor->isVirtual;
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = minor->isVirtual;
+ 
+         } break;
+ 
+@@ -2176,7 +2176,7 @@
+             // This ioctl returns the base of the media object.
+             //
+ 
+-            *(uint64_t *)data = minor->media->getBase();
++            *static_cast<uint64_t *>(static_cast<void *>(data)) = minor->media->getBase();
+ 
+         } break;
+ 
+@@ -2192,7 +2192,7 @@
+                          /* key    */ kIOStorageFeaturesKey,
+                          /* plane  */ gIOServicePlane ) );
+ 
+-            *(uint32_t *)data = 0;
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = 0;
+ 
+             if ( dictionary )
+             {
+@@ -2204,7 +2204,7 @@
+                          /* key    */ kIOStorageFeatureBarrier ) );
+ 
+                 if ( boolean == kOSBooleanTrue )
+-                    *(uint32_t *)data |= DK_FEATURE_BARRIER;
++                    *static_cast<uint32_t *>(static_cast<void *>(data)) |= DK_FEATURE_BARRIER;
+ 
+                 boolean = OSDynamicCast(
+                          /* class  */ OSBoolean,
+@@ -2212,7 +2212,7 @@
+                          /* key    */ kIOStorageFeatureForceUnitAccess ) );
+ 
+                 if ( boolean == kOSBooleanTrue )
+-                    *(uint32_t *)data |= DK_FEATURE_FORCE_UNIT_ACCESS;
++                    *static_cast<uint32_t *>(static_cast<void *>(data)) |= DK_FEATURE_FORCE_UNIT_ACCESS;
+ 
+                 boolean = OSDynamicCast(
+                          /* class  */ OSBoolean,
+@@ -2220,7 +2220,7 @@
+                          /* key    */ kIOStorageFeaturePriority ) );
+ 
+                 if ( boolean == kOSBooleanTrue )
+-                    *(uint32_t *)data |= DK_FEATURE_PRIORITY;
++                    *static_cast<uint32_t *>(static_cast<void *>(data)) |= DK_FEATURE_PRIORITY;
+ 
+                 boolean = OSDynamicCast(
+                          /* class  */ OSBoolean,
+@@ -2228,7 +2228,7 @@
+                          /* key    */ kIOStorageFeatureUnmap ) );
+ 
+                 if ( boolean == kOSBooleanTrue )
+-                    *(uint32_t *)data |= DK_FEATURE_UNMAP;
++                    *static_cast<uint32_t *>(static_cast<void *>(data)) |= DK_FEATURE_UNMAP;
+             }
+ 
+         } break;
+@@ -2239,7 +2239,7 @@
+             // This ioctl returns the throttle mask for the media object.
+             //
+ 
+-            *( ( uint64_t * ) data ) = _IOMediaBSDClientGetThrottleMask( minor->media );
++            *( static_cast<uint64_t *>(static_cast<void *>(data)) ) = _IOMediaBSDClientGetThrottleMask( minor->media );
+ 
+         } break;
+ 
+@@ -2255,7 +2255,7 @@
+                                  /* key   */ kIOPropertyControllerCharacteristicsKey,
+                                  /* plane */ gIOServicePlane ) );
+ 
+-            *(uint32_t *)data = 0;
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = 0;
+ 
+             if ( dictionary )
+             {
+@@ -2267,11 +2267,11 @@
+                 if ( string )
+                 {
+                     if ( string->isEqualTo(kIOPropertyAESCBCKey) )
+-                        *(uint32_t *)data = DK_ENCRYPTION_TYPE_AES_CBC;
++                        *static_cast<uint32_t *>(static_cast<void *>(data)) = DK_ENCRYPTION_TYPE_AES_CBC;
+                     else if ( string->isEqualTo(kIOPropertyAESXEXKey) )
+-                        *(uint32_t *)data = DK_ENCRYPTION_TYPE_AES_XEX;
++                        *static_cast<uint32_t *>(static_cast<void *>(data)) = DK_ENCRYPTION_TYPE_AES_XEX;
+                     else if ( string->isEqualTo(kIOPropertyAESXTSKey) )
+-                        *(uint32_t *)data = DK_ENCRYPTION_TYPE_AES_XTS;
++                        *static_cast<uint32_t *>(static_cast<void *>(data)) = DK_ENCRYPTION_TYPE_AES_XTS;
+                 }
+             }
+ 
+@@ -2289,7 +2289,7 @@
+                                  /* key   */ kIOPropertyControllerCharacteristicsKey,
+                                  /* plane */ gIOServicePlane ) );
+ 
+-            *(uint32_t *)data = false;
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = false;
+ 
+             if ( dictionary )
+             {
+@@ -2299,7 +2299,7 @@
+                                  /* key   */ kIOPropertyLowPowerModeKey ) );
+ 
+                 if ( boolean == kOSBooleanTrue )
+-                    *(uint32_t *)data = true;
++                    *static_cast<uint32_t *>(static_cast<void *>(data)) = true;
+             }
+ 
+         } break;
+@@ -2316,9 +2316,9 @@
+                                  /* key   */ kIOMinimumSaturationByteCountKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint32_t *)data = number->unsigned32BitValue();
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = number->unsigned32BitValue();
+             else
+-                *(uint32_t *)data = 0;
++                *static_cast<uint32_t *>(static_cast<void *>(data)) = 0;
+             
+         } break;
+ 
+@@ -2337,9 +2337,9 @@
+                                  /* key   */ kIOMaximumSwapWriteKey,
+                                  /* plane */ gIOServicePlane ) );
+             if ( number )
+-                *(uint64_t *)data = number->unsigned64BitValue();
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = number->unsigned64BitValue();
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+         } break;
+ ///w:start
+ #endif //DKIOCGETMAXSWAPWRITE
+@@ -2384,7 +2384,7 @@
+             // media object.
+             //
+ 
+-            *(uint32_t *)data = (uint32_t) minor->bdevBlockSize;
++            *static_cast<uint32_t *>(static_cast<void *>(data)) = (uint32_t) minor->bdevBlockSize;
+ 
+         } break;
+ 
+@@ -2395,8 +2395,8 @@
+             // duration of all block device opens at this minor.
+             //
+ 
+-            if ( *(uint32_t *)data > 0 )
+-                minor->bdevBlockSize = (UInt64) (*(uint32_t *)data);
++            if ( *static_cast<uint32_t *>(static_cast<void *>(data)) > 0 )
++                minor->bdevBlockSize = (UInt64) (*static_cast<uint32_t *>(static_cast<void *>(data)));
+             else
+                 error = EINVAL;
+ 
+@@ -2410,10 +2410,10 @@
+             //
+ 
+             if ( minor->bdevBlockSize )
+-                *(uint64_t *)data = ( minor->media->getSize() /
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = ( minor->media->getSize() /
+                                       minor->bdevBlockSize    );
+             else
+-                *(uint64_t *)data = 0;
++                *static_cast<uint64_t *>(static_cast<void *>(data)) = 0;
+ 
+         } break;
+ 
+@@ -2434,7 +2434,7 @@
+         {
+             dk_physical_extent_t * request;
+             
+-            request = ( dk_physical_extent_t * ) data;
++            request = static_cast<dk_physical_extent_t *>(static_cast<void *>(data));
+ 
+             if ( DKIOC_IS_RESERVED( data, 0xFFFF0000 ) == false )
+             {
+@@ -2503,8 +2503,8 @@
+ 
+             assert(sizeof(dk_extent_t) == sizeof(IOStorageExtent));
+ 
+-            request32 = (dk_set_tier_32_t *) data;
+-            request64 = (dk_set_tier_64_t *) data;
++            request32 = static_cast<dk_set_tier_32_t *>(static_cast<void *>(data));
++            request64 = static_cast<dk_set_tier_64_t *>(static_cast<void *>(data));
+ 
+             if ( proc_is64bit(proc) )
+             {
+@@ -2783,7 +2783,7 @@
+ 
+ inline IOStorageAttributes DKR_GET_ATTRIBUTES(dkr_t dkr, dkrtype_t dkrtype)
+ {
+-    IOStorageAttributes attributes = { 0 };
++    IOStorageAttributes attributes = {};
+ 
+     if (dkrtype == DKRTYPE_BUF)
+     {
+@@ -2833,8 +2833,8 @@
+ 
+     IOStorageAttributes  attributes;
+     IOMemoryDescriptor * buffer;
+-    register UInt64      byteCount;
+-    register UInt64      byteStart;
++    UInt64               byteCount;
++    UInt64               byteStart;
+     UInt64               mediaSize;
+     MinorSlot *          minor;
+     IOReturn             status;

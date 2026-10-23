@@ -1,0 +1,45 @@
+diff --git a/makedefs/MakeInc.kernel b/makedefs/MakeInc.kernel
+--- a/makedefs/MakeInc.kernel
++++ b/makedefs/MakeInc.kernel
+@@ -61,11 +61,17 @@
+ 
+ .PHONY: do_build_kernel
+ 
++ifeq ($(BUILD_XNU_LIBRARY),1)
++do_build_kernel: $(KERNEL_STATIC_LINK_TARGETS)
++else
+ do_build_kernel: $(TARGET)/$(KERNEL_FILE_NAME) $(TARGET)/$(KERNEL_FILE_NAME).unstripped $(KERNEL_STATIC_LINK_TARGETS)
+-	@:
+-
++endif
++	@:
++
++ifneq ($(BUILD_XNU_LIBRARY),1)
+ ifeq ($(BUILD_DSYM),1)
+ do_build_all:: do_build_kernel_dSYM
++endif
+ endif
+ 
+ .PHONY: do_build_kernel_dSYM
+@@ -100,17 +106,19 @@
+ 	$(_v)$(MV) $@/$(DSYMDWARFDIR)/$(KERNEL_FILE_NAME).unstripped $@/$(DSYMDWARFDIR)/$(KERNEL_FILE_NAME)
+ 	$(_v)$(TOUCH) $@
+ 
++$(TARGET)/$(KERNEL_FILE_NAME).unstripped: $(XNU_EXTERNAL_KERNEL_ARCHIVES)
++
+ $(TARGET)/$(KERNEL_FILE_NAME).unstripped: $(addprefix $(TARGET)/,$(foreach component,$(COMPONENT_LIST),$(component)/$(CURRENT_KERNEL_CONFIG)/$(component).filelist)) lastkerneldataconst.o lastkernelconstructor.o $(SRCROOT)/config/version.c $(SRCROOT)/config/MasterVersion .LDFLAGS $(filter %/MakeInc.kernel,$(MAKEFILE_LIST))
+ 	$(_v)${MAKE} -f $(firstword $(MAKEFILE_LIST)) version.o
+ 	@echo "$(ColorL)LD$(Color0)  $(ColorLF)$(@F)$(Color0)"
+ 	$(_v)$(CAT) $(filter %.filelist,$+) < /dev/null > link.filelist
+ 	$(_v)$(LD) $(LDFLAGS_KERNEL) $(LDFLAGS_KERNEL_EXPORTS) -filelist link.filelist version.o $(filter %.o,$+) -o $@ $(LD_KERNEL_LIBS) $(LD_KERNEL_ARCHIVES)
+ 
+-$(TARGET)/$(KERNEL_FILE_NAME).link/$(KERNEL_FILE_NAME).a: $(addprefix $(TARGET)/,$(foreach component,$(COMPONENT_LIST),$(component)/$(CURRENT_KERNEL_CONFIG)/$(component).filelist)) lastkerneldataconst.o lastkernelconstructor.o $(TARGET)/$(KERNEL_FILE_NAME).unstripped .LDFLAGS $(filter %/MakeInc.kernel,$(MAKEFILE_LIST))
++$(TARGET)/$(KERNEL_FILE_NAME).link/$(KERNEL_FILE_NAME).a: $(addprefix $(TARGET)/,$(foreach component,$(COMPONENT_LIST),$(component)/$(CURRENT_KERNEL_CONFIG)/$(component).filelist)) lastkerneldataconst.o lastkernelconstructor.o version.o .LDFLAGS $(filter %/MakeInc.kernel,$(MAKEFILE_LIST))
+ 	@echo "$(ColorL)LIBTOOL$(Color0)    $(ColorLF)$(@F)$(Color0)"
+ 	$(_v)$(MKDIR) $(dir $@)
+ 	$(_v)$(CAT) $(filter %.filelist,$+) < /dev/null > libtool.filelist
+-	$(_v)$(LIBTOOL) -ca -filelist libtool.filelist $(filter %.o,$+) version.o -o $@
++	$(_v)$(LIBTOOL) -ca -filelist libtool.filelist $(filter %.o,$+) -o $@
+ 	$(_v)cp $(TARGET)/all-kpi.exp $(TARGET)/$(KERNEL_FILE_NAME).link/$(KERNEL_FILE_NAME).exp
+ 	$(_v)cp $(TARGET)/all-alias.exp $(TARGET)/$(KERNEL_FILE_NAME).link/$(KERNEL_FILE_NAME).alias.exp
+ 	$(_v)echo "$(LD_KERNEL_ARCHIVES)" >$(TARGET)/$(KERNEL_FILE_NAME).link/$(KERNEL_FILE_NAME).linkarchives

@@ -1,3 +1,8 @@
+INF UniXNUPkg/Application/UniXNU/UniXNU.inf
+INF UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
+INF DarwinBootPkg/Driver/DarwinBoot.inf
+INF Platform/divo/sc9832e/dw99/Drivers/DarwinPanicRecoveryDxe/DarwinPanicRecoveryDxe.inf
+
 // per-device BSP DXEs
 INF Platform/divo/sc9832e/dw99/Drivers/SprdDisplayDxe/SprdDisplayDxe.inf
 INF Silicon/Spreadtrum/uws6152/Drivers/GraphicsConsoleDxe/GraphicsConsoleDxe.inf

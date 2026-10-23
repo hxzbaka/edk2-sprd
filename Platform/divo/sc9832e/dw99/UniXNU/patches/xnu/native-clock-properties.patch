@@ -1,0 +1,22 @@
+diff --git a/pexpert/arm/pe_identify_machine.c b/pexpert/arm/pe_identify_machine.c
+index 4e734fb..db47593 100644
+--- a/pexpert/arm/pe_identify_machine.c
++++ b/pexpert/arm/pe_identify_machine.c
+@@ -46,7 +46,7 @@ pe_identify_machine(boot_args * bootArgs)
+ 	OpaqueDTEntryIterator iter;
+ 	DTEntry		cpus, cpu;
+ 	uint32_t	mclk = 0, hclk = 0, pclk = 0, tclk = 0, use_dt = 0;
+-	unsigned long  *value;
++	uint32_t       *value;
+ 	unsigned int	size;
+ 	int		err;
+ 
+@@ -110,6 +110,8 @@ pe_identify_machine(boot_args * bootArgs)
+ 		gPEClockFrequencyInfo.timebase_frequency_hz = 24000000;
+ 		gPEClockFrequencyInfo.bus_clock_rate_hz = 100000000;
+ 		gPEClockFrequencyInfo.cpu_clock_rate_hz = 400000000;
++		gPEClockFrequencyInfo.bus_frequency_hz = gPEClockFrequencyInfo.bus_clock_rate_hz;
++		gPEClockFrequencyInfo.cpu_frequency_hz = gPEClockFrequencyInfo.cpu_clock_rate_hz;
+ 
+ 		err = DTLookupEntry(NULL, "/cpus", &cpus);
+ 		assert(err == kSuccess);

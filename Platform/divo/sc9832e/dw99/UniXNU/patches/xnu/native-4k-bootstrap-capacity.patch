@@ -1,0 +1,72 @@
+diff --git a/osfmk/arm/pmap.h b/osfmk/arm/pmap.h
+index 88d8908..28f4137 100644
+--- a/osfmk/arm/pmap.h
++++ b/osfmk/arm/pmap.h
+@@ -114,7 +114,12 @@ typedef struct pmap_cpu_data pmap_cpu_data_t;
+ 
+ #if defined(__arm64__)
+ 
++#if !defined(APPLE_ARM64_ARCH_FAMILY) && !__ARM_16K_PG__
++// Physical and virtual mappings can straddle different L1 boundaries.
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
++#else
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
++#endif
+ 
+ typedef uint64_t	tt_entry_t;					/* translation table entry type */
+ #define TT_ENTRY_NULL	 ((tt_entry_t *) 0)
+diff --git a/osfmk/arm64/genassym.c b/osfmk/arm64/genassym.c
+index c9755bd..4a10349 100644
+--- a/osfmk/arm64/genassym.c
++++ b/osfmk/arm64/genassym.c
+@@ -257,6 +257,7 @@ main(
+ 	DECLARE("NS64_FPCR", offsetof(arm_context_t, ns.ns_64.fpcr));
+ 
+ 	DECLARE("PGBYTES", ARM_PGBYTES);
++	DECLARE("BOOTSTRAP_TABLE_BYTES", BOOTSTRAP_TABLE_SIZE);
+ 	DECLARE("PGSHIFT", ARM_PGSHIFT);
+ 	DECLARE("PGMASK", ARM_PGMASK);
+ 
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index f709217..315a969 100644
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -415,6 +415,11 @@ start_cpu:
+ 
+ 	/* allocate an L2 table */
+ 3:	add	$4, $4, PGBYTES
++	// The next L2 table must stay within the bootstrap pool.
++	mov $6, BOOTSTRAP_TABLE_BYTES
++	add $6, x25, $6
++	cmp $4, $6
++	b.hs Lbootstrap_tables_exhausted
+ 
+ 	/* create_l1_table_entry(virt_base, L1 table, L2 table, scratch1, scratch2, scratch3) */
+ 	create_l1_table_entry	$0, $3, $4, $6, $7, $8
+@@ -522,12 +526,8 @@ LEXT(start_first_cpu)
+ 	// Invalidate all entries in the bootstrap page tables
+ 	mov		x0, #(ARM_TTE_EMPTY)				// Load invalid entry template
+ 	mov		x1, x25								// Start at top of kernel
+-	mov		x2, #(TTE_PGENTRIES)				// Load number of entries per page
+-#if __ARM64_TWO_LEVEL_PMAP__
+-	lsl		x2, x2, #1							// Shift by 1 for num entries on 2 pages
+-#else
+-	lsl		x2, x2, #2							// Shift by 2 for num entries on 4 pages
+-#endif
++	mov		x2, BOOTSTRAP_TABLE_BYTES
++	lsr		x2, x2, #TTE_SHIFT
+ Linvalidate_bootstrap:							// do {
+ 	str		x0, [x1], #(1 << TTE_SHIFT)			//   Invalidate and advance
+ 	subs	x2, x2, #1							//   entries--
+@@ -600,6 +600,11 @@ Linvalidate_bootstrap:							// do {
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+ 
++	b Lbootstrap_tables_ready
++Lbootstrap_tables_exhausted:
++	// With the MMU off, pool exhaustion cannot use the kernel panic path.
++	b Lbootstrap_tables_exhausted
++Lbootstrap_tables_ready:
+ 	/* Ensure TTEs are visible */
+ 	dsb		ish
+ 

@@ -1,0 +1,928 @@
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Boot.c b/package/UniXNUPkg/Library/UniXNULib/Boot.c
+index 4b1e737..0edc7cf 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Boot.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Boot.c
+@@ -46,7 +46,9 @@ RunXnu (
+   IN VOID      *Fdt,
+   IN UINTN     FdtSize,
+   IN VOID      *Ramdisk,
+-  IN UINTN     RamdiskSize
++  IN UINTN     RamdiskSize,
++  OUT CHAR16   *FailureReason,
++  IN UINTN     FailureReasonSize
+   )
+ {
+   EFI_STATUS                     Status;
+@@ -58,6 +60,7 @@ RunXnu (
+   Status = gBS->LocateProtocol (&gUniXNULoaderProtocolGuid, NULL, (VOID **)&Loader);
+   if (EFI_ERROR (Status)) {
+     UniXNULog ("xnu: no loader protocol installed; UniXNU does not provide one");
++    UnicodeSPrint (FailureReason, FailureReasonSize, L"XNU loader protocol is not installed");
+     return EFI_UNSUPPORTED;
+   }
+ 
+@@ -65,6 +68,7 @@ RunXnu (
+        (Loader->Revision != UNIXNU_LOADER_REVISION)) || (Loader->Boot == NULL))
+   {
+     UniXNULog ("xnu: unsupported loader revision or missing Boot callback");
++    UnicodeSPrint (FailureReason, FailureReasonSize, L"XNU loader revision or Boot callback is unsupported");
+     return EFI_UNSUPPORTED;
+   }
+ 
+@@ -75,6 +79,7 @@ RunXnu (
+ 
+   if ((KextCount != 0) && (Loader->Revision == UNIXNU_LOADER_REVISION_1)) {
+     UniXNULog ("xnu: loader revision 1 cannot accept kexts");
++    UnicodeSPrint (FailureReason, FailureReasonSize, L"XNU loader revision 1 cannot accept kexts");
+     UniXNUFreeKexts (Kexts, KextCount);
+     return EFI_UNSUPPORTED;
+   }
+@@ -91,6 +96,9 @@ RunXnu (
+   Request.KextCount      = KextCount;
+   UniXNULog ("xnu: handing off %u staged kext(s) to loader", (UINT32)KextCount);
+   Status = Loader->Boot (Loader, &Request);
++  if (EFI_ERROR (Status)) {
++    UnicodeSPrint (FailureReason, FailureReasonSize, L"XNU loader returned: %r", Status);
++  }
+   UniXNUFreeKexts (Kexts, KextCount);
+   return Status;
+ }
+@@ -99,12 +107,16 @@ EFI_STATUS
+ UniXNUBootEntry (
+   IN EFI_HANDLE  ImageHandle,
+   IN UNIXNU_CONFIG   *Config,
+-  IN UNIXNU_ENTRY    *Entry
++  IN UNIXNU_ENTRY    *Entry,
++  OUT CHAR16        *FailureReason,
++  IN UINTN          FailureReasonSize
+   )
+ {
+   EFI_STATUS                 Status;
++  EFI_STATUS                 CleanupStatus;
+   VOID                       *Fdt;
+   UINTN                      FdtSize;
++  UINTN                      FdtPages;
+   VOID                       *Initrd;
+   UINTN                      InitrdSize;
+   EFI_HANDLE                 InitrdHandle;
+@@ -132,13 +144,16 @@ UniXNUBootEntry (
+   InitrdSize   = 0;
+   InitrdHandle = NULL;
+ 
+-  UniXNUSetEntryVariables (Entry);
++  Status = UniXNUSetEntryVariables (Entry);
++  if (EFI_ERROR (Status)) {
++    return Status;
++  }
+ 
+   if (EFI_ERROR (EfiGetSystemConfigurationTable (&gFdtTableGuid, &FirmwareFdt))) {
+     FirmwareFdt = NULL;
+   }
+ 
+-  Status = UniXNUPrepareDeviceTree (Config, Entry, &Fdt, &FdtSize);
++  Status = UniXNUPrepareDeviceTree (Config, Entry, &Fdt, &FdtSize, &FdtPages);
+   if (EFI_ERROR (Status)) {
+     return Status;
+   }
+@@ -162,7 +177,7 @@ UniXNUBootEntry (
+   }
+ 
+   if (Entry->Type == UniXNUEntryXnu) {
+-    Status = RunXnu (Config, Entry, Fdt, FdtSize, Initrd, InitrdSize);
++    Status = RunXnu (Config, Entry, Fdt, FdtSize, Initrd, InitrdSize, FailureReason, FailureReasonSize);
+     goto Done;
+   }
+ 
+@@ -211,7 +226,15 @@ Done:
+   // entry starts from the same state.
+   //
+   if (Fdt != NULL) {
+-    gBS->InstallConfigurationTable (&gFdtTableGuid, FirmwareFdt);
++    CleanupStatus = gBS->InstallConfigurationTable (&gFdtTableGuid, FirmwareFdt);
++    if (!EFI_ERROR (CleanupStatus)) {
++      CleanupStatus = gBS->FreePages ((EFI_PHYSICAL_ADDRESS)(UINTN)Fdt, FdtPages);
++    }
++
++    if (EFI_ERROR (CleanupStatus)) {
++      UniXNULog ("dt: restore/free failed: %r", CleanupStatus);
++      Status = CleanupStatus;
++    }
+   }
+ 
+   UniXNUUninstallInitrd (InitrdHandle);
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Config.c b/package/UniXNUPkg/Library/UniXNULib/Config.c
+index 425adec..363a967 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Config.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Config.c
+@@ -9,7 +9,6 @@
+ 
+ #include "Internal.h"
+ 
+-#include <Library/FdtLib.h>
+ 
+ //
+ // UniXNU targets AArch64 UEFI only.
+@@ -21,10 +20,130 @@
+ #define UNIXNU_ARCH_NAME        "AARCH64"
+ #define UNIXNU_FALLBACK_LOADER  L"\\EFI\\BOOT\\BOOTAA64.EFI"
+ 
+-#define UNIXNU_CONFIG_DIR  L"\\EFI\\UniXNU"
+ #define UNIXNU_KITS_DIR    "Kits"
+ #define UNIXNU_KIT_MANIFEST  L"Kit.toml"
+ 
++STATIC
++VOID
++FreeOptional (
++  IN VOID  *Allocation
++  )
++{
++  if (Allocation != NULL) {
++    FreePool (Allocation);
++  }
++}
++
++STATIC
++VOID
++FreePatch (
++  IN UNIXNU_DT_PATCH  *Patch
++  )
++{
++  FreeOptional (Patch->Node);
++  FreeOptional (Patch->Prop);
++  FreeOptional (Patch->Value);
++  FreeOptional (Patch->Origin);
++}
++
++STATIC
++VOID
++FreePatches (
++  IN UNIXNU_DT_PATCH  *Patches,
++  IN UINTN           Count
++  )
++{
++  UINTN  Index;
++
++  for (Index = 0; Index < Count; Index++) {
++    FreePatch (&Patches[Index]);
++  }
++
++  FreeOptional (Patches);
++}
++
++STATIC
++VOID
++FreeConfigKexts (
++  IN UNIXNU_KEXT  *Kexts,
++  IN UINTN        Count
++  )
++{
++  UINTN  Index;
++
++  for (Index = 0; Index < Count; Index++) {
++    FreeOptional (Kexts[Index].EntryId);
++    FreeOptional (Kexts[Index].BundlePath);
++    FreeOptional (Kexts[Index].PlistPath);
++    FreeOptional (Kexts[Index].ExecutablePath);
++  }
++
++  FreeOptional (Kexts);
++}
++
++VOID
++UniXNUConfigFree (
++  IN OUT UNIXNU_CONFIG  *Config
++  )
++{
++  UINTN         Index;
++  UINTN         Item;
++  UNIXNU_ENTRY  *Entry;
++
++  for (Index = 0; Index < Config->DriverCount; Index++) {
++    FreeOptional (Config->Drivers[Index].File);
++    FreeOptional (Config->Drivers[Index].Args);
++    FreeOptional (Config->Drivers[Index].Origin);
++  }
++
++  FreeOptional (Config->Drivers);
++  FreePatches (Config->Patches, Config->PatchCount);
++  for (Index = 0; Index < Config->AcpiCount; Index++) {
++    FreeOptional (Config->AcpiTables[Index].File);
++    FreeOptional (Config->AcpiTables[Index].Origin);
++  }
++
++  FreeOptional (Config->AcpiTables);
++  for (Index = 0; Index < Config->SliceCount; Index++) {
++    FreeOptional (Config->Slices[Index].Partition);
++    FreeOptional (Config->Slices[Index].Name);
++  }
++
++  FreeOptional (Config->Slices);
++  FreeConfigKexts (Config->Kexts, Config->KextCount);
++  for (Index = 0; Index < Config->EntryCount; Index++) {
++    Entry = &Config->Entries[Index];
++    FreeOptional (Entry->Id);
++    FreeOptional (Entry->Title);
++    FreeOptional (Entry->Path);
++    FreeOptional (Entry->Args);
++    FreeOptional (Entry->Confirm);
++    for (Item = 0; Item < Entry->ConfirmCount; Item++) {
++      FreeOptional (Entry->ConfirmTitles[Item]);
++      FreeOptional (Entry->ConfirmArgs[Item]);
++    }
++
++    FreeOptional (Entry->ConfirmTitles);
++    FreeOptional (Entry->ConfirmArgs);
++    FreeOptional (Entry->Dtb);
++    FreeOptional (Entry->Initrd);
++    FreePatches (Entry->Patches, Entry->PatchCount);
++    for (Item = 0; Item < Entry->VariableCount; Item++) {
++      FreeOptional (Entry->Variables[Item].Name);
++      FreeOptional (Entry->Variables[Item].Data);
++    }
++
++    FreeOptional (Entry->Variables);
++    FreeConfigKexts (Entry->Kexts, Entry->KextCount);
++  }
++
++  FreeOptional (Config->Entries);
++  FreeOptional (Config->Title);
++  FreeOptional (Config->BaseDirectory);
++  FreeOptional (Config->SourceLabel);
++  ZeroMem (Config, sizeof (*Config));
++}
++
+ //
+ // Used when no configuration file is found. Parsed with the same code path
+ // as a file; removable-media loaders found on other volumes are added in
+@@ -492,15 +611,19 @@ AddDtPatch (
+       File = TomlGetString (Table, "file", NULL);
+       if (File == NULL) {
+         ConfigError (Config, "%a: overlay needs 'file' (line %u)", Origin, (UINT32)Table->Line);
+-        return;
++        goto Failed;
+       }
+ 
+       FilePath = MakePath (BaseDir, File);
++      if (FilePath == NULL) {
++        ConfigError (Config, "%a: overlay path allocation failed", Origin);
++        goto Failed;
++      }
+       Status   = UniXNUReadFile (Volume, FilePath, &Patch.Value, &Patch.ValueSize);
+       if (EFI_ERROR (Status)) {
+         ConfigError (Config, "%a: cannot read overlay %s: %r", Origin, FilePath, Status);
+         FreePool (FilePath);
+-        return;
++        goto Failed;
+       }
+ 
+       FreePool (FilePath);
+@@ -511,7 +634,7 @@ AddDtPatch (
+           !EncodeFdtValue (TomlGet (Table, "value"), TomlGetString (Table, "type", NULL), &Patch.Value, &Patch.ValueSize))
+       {
+         ConfigError (Config, "%a: dt_patch set needs node, prop and a valid value (line %u)", Origin, (UINT32)Table->Line);
+-        return;
++        goto Failed;
+       }
+ 
+       break;
+@@ -519,7 +642,7 @@ AddDtPatch (
+     case UniXNUDtDeleteProp:
+       if ((Patch.Node == NULL) || (Patch.Prop == NULL)) {
+         ConfigError (Config, "%a: delete-prop needs node and prop (line %u)", Origin, (UINT32)Table->Line);
+-        return;
++        goto Failed;
+       }
+ 
+       break;
+@@ -527,7 +650,7 @@ AddDtPatch (
+     default:
+       if (Patch.Node == NULL) {
+         ConfigError (Config, "%a: dt_patch needs node (line %u)", Origin, (UINT32)Table->Line);
+-        return;
++        goto Failed;
+       }
+ 
+       break;
+@@ -536,7 +659,10 @@ AddDtPatch (
+   Slot = GrowArray ((VOID **)Patches, Count, sizeof (UNIXNU_DT_PATCH));
+   if (Slot != NULL) {
+     CopyMem (Slot, &Patch, sizeof (Patch));
++    return;
+   }
++Failed:
++  FreePatch (&Patch);
+ }
+ 
+ STATIC
+@@ -966,6 +1092,7 @@ LoadKit (
+     Path  = MakePath (KitDir, File);
+     Patch = GrowArray ((VOID **)&Config->Patches, &Config->PatchCount, sizeof (UNIXNU_DT_PATCH));
+     if ((Path == NULL) || (Patch == NULL)) {
++      FreeOptional (Path);
+       continue;
+     }
+ 
+@@ -974,6 +1101,8 @@ LoadKit (
+     Status        = UniXNUReadFile (Volume, Path, &Patch->Value, &Patch->ValueSize);
+     if (EFI_ERROR (Status)) {
+       ConfigError (Config, "%a: cannot read %s: %r", Origin, Path, Status);
++      FreePatch (Patch);
++      ZeroMem (Patch, sizeof (*Patch));
+       Config->PatchCount--;
+     }
+ 
+@@ -1045,7 +1174,7 @@ LoadKits (
+       continue;
+     }
+ 
+-    KitDir = MakePath (UNIXNU_CONFIG_DIR, TomlGetString (Item, "path", NULL));
++    KitDir = MakePath (Config->BaseDirectory, TomlGetString (Item, "path", NULL));
+     if (KitDir != NULL) {
+       LoadKit (Config, Config->Volume, KitDir);
+       FreePool (KitDir);
+@@ -1060,7 +1189,7 @@ LoadKits (
+     return;
+   }
+ 
+-  Dir = MakePath (UNIXNU_CONFIG_DIR, TomlGetString (Kits, "directory", UNIXNU_KITS_DIR));
++  Dir = MakePath (Config->BaseDirectory, TomlGetString (Kits, "directory", UNIXNU_KITS_DIR));
+   if ((Dir == NULL) || EFI_ERROR (UniXNUListDirectory (Config->Volume, Dir, &Names, &Count))) {
+     if (Dir != NULL) {
+       FreePool (Dir);
+@@ -1155,7 +1284,7 @@ AddEntry (
+     ConfigError (Config, "%a: needs 'path'", Origin);
+   }
+ 
+-  Entry->Path   = MakePath (UNIXNU_CONFIG_DIR, Path);
++  Entry->Path   = MakePath (Config->BaseDirectory, Path);
+   Entry->Args   = UniXNUAsciiToUnicode (TomlGetString (Table, "args", NULL));
+   Entry->Confirm = UniXNUAsciiToUnicode (TomlGetString (Table, "confirm", NULL));
+   {
+@@ -1186,7 +1315,7 @@ AddEntry (
+       ConfigError (Config, "entry '%a': confirm_titles and confirm_args must be arrays of strings of equal length, with confirm", (Entry->Id != NULL) ? Entry->Id : "?");
+     }
+   }
+-  Entry->Initrd = MakePath (UNIXNU_CONFIG_DIR, TomlGetString (Table, "initrd", NULL));
++  Entry->Initrd = MakePath (Config->BaseDirectory, TomlGetString (Table, "initrd", NULL));
+   List = TomlGet (Table, "kext");
+   if (List != NULL) {
+     if ((Entry->Type != UniXNUEntryXnu) || (List->Type != TomlArray) || !List->TableArray) {
+@@ -1194,7 +1323,7 @@ AddEntry (
+       Entry->KextConfigError = TRUE;
+     } else {
+       for (Item = List->Child; Item != NULL; Item = Item->Next) {
+-        AddKext (Config, Item, Config->Volume, UNIXNU_CONFIG_DIR, Origin, FALSE,
++        AddKext (Config, Item, Config->Volume, Config->BaseDirectory, Origin, FALSE,
+                  &Entry->Kexts, &Entry->KextCount, &Entry->KextConfigError);
+       }
+     }
+@@ -1204,13 +1333,13 @@ AddEntry (
+     if (AsciiStrCmp (TomlGetString (Table, "dtb", NULL), "firmware") == 0) {
+       Entry->Dtb = AllocateCopyPool (sizeof (L"firmware"), L"firmware");
+     } else {
+-      Entry->Dtb = MakePath (UNIXNU_CONFIG_DIR, TomlGetString (Table, "dtb", NULL));
++      Entry->Dtb = MakePath (Config->BaseDirectory, TomlGetString (Table, "dtb", NULL));
+     }
+   }
+ 
+   List = TomlGet (Table, "dt_patch");
+   for (Item = (List != NULL) ? List->Child : NULL; Item != NULL; Item = Item->Next) {
+-    AddDtPatch (Config, Item, Config->Volume, UNIXNU_CONFIG_DIR, Origin, &Entry->Patches, &Entry->PatchCount);
++    AddDtPatch (Config, Item, Config->Volume, Config->BaseDirectory, Origin, &Entry->Patches, &Entry->PatchCount);
+   }
+ 
+   //
+@@ -1234,6 +1363,8 @@ AddEntry (
+       Patch->Value     = Bytes;
+       Patch->ValueSize = Size;
+       Patch->Origin    = AsciiDup (Origin);
++    } else {
++      FreeOptional (Bytes);
+     }
+   }
+ 
+@@ -1260,6 +1391,9 @@ AddEntry (
+     Slot = GrowArray ((VOID **)&Entry->Variables, &Entry->VariableCount, sizeof (UNIXNU_VARIABLE));
+     if (Slot != NULL) {
+       CopyMem (Slot, &Var, sizeof (Var));
++    } else {
++      FreeOptional (Var.Name);
++      FreeOptional (Var.Data);
+     }
+   }
+ }
+@@ -1413,12 +1547,12 @@ ApplyRoot (
+ 
+   List = TomlGet (Root, "driver");
+   for (Item = (List != NULL) ? List->Child : NULL; Item != NULL; Item = Item->Next) {
+-    AddDriver (Config, Item, Config->Volume, UNIXNU_CONFIG_DIR, "config", "path");
++    AddDriver (Config, Item, Config->Volume, Config->BaseDirectory, "config", "path");
+   }
+ 
+   List = TomlGet (Root, "dt_patch");
+   for (Item = (List != NULL) ? List->Child : NULL; Item != NULL; Item = Item->Next) {
+-    AddDtPatch (Config, Item, Config->Volume, UNIXNU_CONFIG_DIR, "config", &Config->Patches, &Config->PatchCount);
++    AddDtPatch (Config, Item, Config->Volume, Config->BaseDirectory, "config", &Config->Patches, &Config->PatchCount);
+   }
+ 
+   List = TomlGet (Root, "block_slice");
+@@ -1453,7 +1587,7 @@ ApplyRoot (
+   Acpi = TomlGet (TomlGet (Root, "acpi"), "add");
+   for (Item = (Acpi != NULL) ? Acpi->Child : NULL; Item != NULL; Item = Item->Next) {
+     if (Item->Type == TomlString) {
+-      AddAcpi (Config, Config->Volume, UNIXNU_CONFIG_DIR, Item->String, "config");
++      AddAcpi (Config, Config->Volume, Config->BaseDirectory, Item->String, "config");
+     }
+   }
+ 
+@@ -1518,7 +1652,7 @@ TryVolume (
+   return TRUE;
+ }
+ 
+-VOID
++EFI_STATUS
+ UniXNUConfigLoad (
+   IN  EFI_HANDLE  ImageHandle,
+   OUT UNIXNU_CONFIG   *Config
+@@ -1533,8 +1667,30 @@ UniXNUConfigLoad (
+   TOML_NODE                  *Root;
+   CHAR8                      Error[96];
+   CHAR16                     Label[64];
++  CHAR16                     *BaseDirectory;
++  CHAR16                     *Separator;
++  CHAR16                     *Cursor;
+ 
+   ZeroMem (Config, sizeof (*Config));
++  BaseDirectory = AllocateCopyPool (PcdGetSize (PcdUniXNUConfigPath), PcdGetPtr (PcdUniXNUConfigPath));
++  if (BaseDirectory == NULL) {
++    return EFI_OUT_OF_RESOURCES;
++  }
++
++  Separator = NULL;
++  for (Cursor = BaseDirectory; *Cursor != L'\0'; Cursor++) {
++    if (*Cursor == L'\\') {
++      Separator = Cursor;
++    }
++  }
++
++  if (Separator == NULL) {
++    FreePool (BaseDirectory);
++    return EFI_INVALID_PARAMETER;
++  }
++
++  Separator[Separator == BaseDirectory ? 1 : 0] = L'\0';
++  Config->BaseDirectory = BaseDirectory;
+   Loaded = FALSE;
+ 
+   //
+@@ -1566,15 +1722,17 @@ UniXNUConfigLoad (
+ 
+     CopyMem (Saved, Config->Error, sizeof (Saved));
+     ZeroMem (Config, sizeof (*Config));
++    Config->BaseDirectory = BaseDirectory;
+     CopyMem (Config->Error, Saved, sizeof (Saved));
+ 
+     Status = TomlParse (mBuiltinConfig, sizeof (mBuiltinConfig) - 1, &Root, Error, sizeof (Error));
+-    ASSERT_EFI_ERROR (Status);
+-    if (!EFI_ERROR (Status)) {
+-      ApplyRoot (Config, Root);
+-      TomlFree (Root);
++    if (EFI_ERROR (Status)) {
++      return Status;
+     }
+ 
++    ApplyRoot (Config, Root);
++    TomlFree (Root);
++
+     if (AddFallbackLoaders (Config, ImageHandle) == 0) {
+       //
+       // Only the actions are left. Say so instead of showing a menu that
+@@ -1611,6 +1769,10 @@ UniXNUConfigLoad (
+     Config->DefaultIndex = 0;
+   }
+ 
++  if ((Config->EntryCount == 0) || (Config->SourceLabel == NULL)) {
++    return EFI_OUT_OF_RESOURCES;
++  }
++
+   //
+   // The countdown must never boot an entry that asks for confirmation: fall back to the first entry that does not.
+   //
+@@ -1625,4 +1787,5 @@ UniXNUConfigLoad (
+       }
+     }
+   }
++  return EFI_SUCCESS;
+ }
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Inject.c b/package/UniXNUPkg/Library/UniXNULib/Inject.c
+index 08f07b8..40b868d 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Inject.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Inject.c
+@@ -11,7 +11,7 @@
+ #include <Guid/Fdt.h>
+ #include <Guid/LinuxEfiInitrdMedia.h>
+ #include <IndustryStandard/Acpi.h>
+-#include <Library/FdtLib.h>
++#include <libfdt.h>
+ #include <Protocol/AcpiTable.h>
+ #include <Protocol/LoadFile2.h>
+ 
+@@ -106,6 +106,7 @@ UniXNUInjectDrivers (
+       continue;
+     }
+ 
++    Loaded = NULL;
+     if ((Driver->Args != NULL) &&
+         !EFI_ERROR (gBS->HandleProtocol (Image, &gEfiLoadedImageProtocolGuid, (VOID **)&Loaded)))
+     {
+@@ -121,6 +122,11 @@ UniXNUInjectDrivers (
+       continue;
+     }
+ 
++    // A resident driver can retain LoadOptions after the boot manager exits.
++    if (Loaded != NULL) {
++      Driver->Args = NULL;
++    }
++
+     UniXNULog ("driver %s (%a): started", Driver->File, Driver->Origin);
+     Stats->DriversLoaded++;
+     NeedConnect = NeedConnect || Driver->Connect;
+@@ -198,11 +204,11 @@ UniXNUFirmwareCompatible (
+   CONST CHAR8  *Value;
+   INT32        Len;
+ 
+-  if (EFI_ERROR (EfiGetSystemConfigurationTable (&gFdtTableGuid, &Fdt)) || (FdtCheckHeader (Fdt) != 0)) {
++  if (EFI_ERROR (EfiGetSystemConfigurationTable (&gFdtTableGuid, &Fdt)) || (fdt_check_header (Fdt) != 0)) {
+     return NULL;
+   }
+ 
+-  Value = FdtGetProp (Fdt, 0, "compatible", &Len);
++  Value = fdt_getprop (Fdt, 0, "compatible", &Len);
+   if ((Value == NULL) || (Len <= 0)) {
+     return NULL;
+   }
+@@ -226,7 +232,7 @@ EnsureNode (
+   CONST CHAR8  *Start;
+   CONST CHAR8  *End;
+ 
+-  Offset = FdtPathOffset (Fdt, Path);
++  Offset = fdt_path_offset (Fdt, Path);
+   if (Offset >= 0) {
+     return Offset;
+   }
+@@ -247,14 +253,14 @@ EnsureNode (
+       End++;
+     }
+ 
+-    Offset = FdtSubnodeOffsetNameLen (Fdt, Parent, Start, (INT32)(End - Start));
++    Offset = fdt_subnode_offset_namelen (Fdt, Parent, Start, (INT32)(End - Start));
+     if (Offset < 0) {
+       CHAR8  Name[128];
+       UINTN  Len = MIN ((UINTN)(End - Start), sizeof (Name) - 1);
+ 
+       CopyMem (Name, Start, Len);
+       Name[Len] = '\0';
+-      Offset    = FdtAddSubnode (Fdt, Parent, Name);
++      Offset    = fdt_add_subnode (Fdt, Parent, Name);
+       if (Offset < 0) {
+         return Offset;
+       }
+@@ -288,12 +294,12 @@ UniXNUApplyDtPatches (
+     switch (Patch->Op) {
+       case UniXNUDtSet:
+         Offset = EnsureNode (Fdt, Patch->Node);
+-        Result = (Offset < 0) ? Offset : FdtSetProp (Fdt, Offset, Patch->Prop, Patch->Value, (UINT32)Patch->ValueSize);
++        Result = (Offset < 0) ? Offset : fdt_setprop (Fdt, Offset, Patch->Prop, Patch->Value, (UINT32)Patch->ValueSize);
+         break;
+ 
+       case UniXNUDtDeleteProp:
+-        Offset = FdtPathOffset (Fdt, Patch->Node);
+-        Result = (Offset < 0) ? Offset : FdtDelProp (Fdt, Offset, Patch->Prop);
++        Offset = fdt_path_offset (Fdt, Patch->Node);
++        Result = (Offset < 0) ? Offset : fdt_delprop (Fdt, Offset, Patch->Prop);
+         break;
+ 
+       case UniXNUDtAddNode:
+@@ -302,8 +308,8 @@ UniXNUApplyDtPatches (
+         break;
+ 
+       case UniXNUDtDeleteNode:
+-        Offset = FdtPathOffset (Fdt, Patch->Node);
+-        Result = (Offset < 0) ? Offset : FdtDelNode (Fdt, Offset);
++        Offset = fdt_path_offset (Fdt, Patch->Node);
++        Result = (Offset < 0) ? Offset : fdt_del_node (Fdt, Offset);
+         break;
+ 
+       case UniXNUDtOverlay:
+@@ -317,7 +323,7 @@ UniXNUApplyDtPatches (
+           break;
+         }
+ 
+-        Result = FdtOverlayApply (Fdt, Overlay);
++        Result = fdt_overlay_apply (Fdt, Overlay);
+         FreePool (Overlay);
+         break;
+     }
+@@ -331,7 +337,7 @@ UniXNUApplyDtPatches (
+         (Patch->Node != NULL) ? Patch->Node : "(overlay)",
+         (Patch->Prop != NULL) ? ":" : "",
+         (Patch->Prop != NULL) ? Patch->Prop : "",
+-        FdtStrerror (Result)
++        fdt_strerror (Result)
+         );
+     }
+   }
+@@ -344,7 +350,8 @@ UniXNUPrepareDeviceTree (
+   IN  UNIXNU_CONFIG  *Config,
+   IN  UNIXNU_ENTRY   *Entry,
+   OUT VOID       **Fdt OPTIONAL,
+-  OUT UINTN      *FdtSize OPTIONAL
++  OUT UINTN      *FdtSize OPTIONAL,
++  OUT UINTN      *FdtPages
+   )
+ {
+   EFI_STATUS            Status;
+@@ -356,6 +363,7 @@ UniXNUPrepareDeviceTree (
+   EFI_PHYSICAL_ADDRESS  Address;
+   VOID                  *Tree;
+ 
++  *FdtPages = 0;
+   if (Entry->Dtb == NULL) {
+     return EFI_SUCCESS;
+   }
+@@ -363,12 +371,12 @@ UniXNUPrepareDeviceTree (
+   FreeBase = FALSE;
+   if (StrCmp (Entry->Dtb, L"firmware") == 0) {
+     Status = EfiGetSystemConfigurationTable (&gFdtTableGuid, &Base);
+-    if (EFI_ERROR (Status) || (FdtCheckHeader (Base) != 0)) {
++    if (EFI_ERROR (Status) || (fdt_check_header (Base) != 0)) {
+       UniXNULog ("dt: entry wants the firmware DTB but none is installed");
+       return EFI_NOT_FOUND;
+     }
+ 
+-    BaseSize = Fdt32ToCpu (((FDT_HEADER *)Base)->TotalSize);
++    BaseSize = fdt_totalsize (Base);
+   } else {
+     Status = UniXNUReadFile (Entry->Volume, Entry->Dtb, &Base, &BaseSize);
+     if (EFI_ERROR (Status)) {
+@@ -377,7 +385,7 @@ UniXNUPrepareDeviceTree (
+     }
+ 
+     FreeBase = TRUE;
+-    if (FdtCheckHeader (Base) != 0) {
++    if (fdt_check_header (Base) != 0) {
+       UniXNULog ("dt: %s is not a flattened device tree", Entry->Dtb);
+       FreePool (Base);
+       return EFI_VOLUME_CORRUPTED;
+@@ -409,7 +417,7 @@ UniXNUPrepareDeviceTree (
+   }
+ 
+   Tree = (VOID *)(UINTN)Address;
+-  if (FdtOpenInto (Base, Tree, (INT32)Size) != 0) {
++  if (fdt_open_into (Base, Tree, (INT32)Size) != 0) {
+     Status = EFI_VOLUME_CORRUPTED;
+   }
+ 
+@@ -421,9 +429,18 @@ UniXNUPrepareDeviceTree (
+     //
+     // Global (config + kits) first, then the entry's own, /chosen last.
+     //
+-    UniXNUApplyDtPatches (Tree, Config->Patches, Config->PatchCount);
+-    UniXNUApplyDtPatches (Tree, Entry->Patches, Entry->PatchCount);
+-    FdtPack (Tree);
++    Status = UniXNUApplyDtPatches (Tree, Config->Patches, Config->PatchCount);
++  }
++
++  if (!EFI_ERROR (Status)) {
++    Status = UniXNUApplyDtPatches (Tree, Entry->Patches, Entry->PatchCount);
++  }
++
++  if (!EFI_ERROR (Status) && (fdt_pack (Tree) != 0)) {
++    Status = EFI_VOLUME_CORRUPTED;
++  }
++
++  if (!EFI_ERROR (Status)) {
+     Status = gBS->InstallConfigurationTable (&gFdtTableGuid, Tree);
+   }
+ 
+@@ -434,7 +451,7 @@ UniXNUPrepareDeviceTree (
+ 
+   UniXNULog (
+     "dt: installed %u bytes, %u global + %u entry patch(es)",
+-    Fdt32ToCpu (((FDT_HEADER *)Tree)->TotalSize),
++    fdt_totalsize (Tree),
+     (UINT32)Config->PatchCount,
+     (UINT32)Entry->PatchCount
+     );
+@@ -444,9 +461,11 @@ UniXNUPrepareDeviceTree (
+   }
+ 
+   if (FdtSize != NULL) {
+-    *FdtSize = Fdt32ToCpu (((FDT_HEADER *)Tree)->TotalSize);
++    *FdtSize = fdt_totalsize (Tree);
+   }
+ 
++  *FdtPages = EFI_SIZE_TO_PAGES (Size);
++
+   return EFI_SUCCESS;
+ }
+ 
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Internal.h b/package/UniXNUPkg/Library/UniXNULib/Internal.h
+index 71aa4b8..a1c9cca 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Internal.h
++++ b/package/UniXNUPkg/Library/UniXNULib/Internal.h
+@@ -37,8 +37,7 @@
+ 
+ // ---------------------------------------------------------------------------
+ // Logging. Every line goes to DEBUG() and, when the platform exposes one, to
+-// the first EFI_SERIAL_IO_PROTOCOL instance. Lines are prefixed "UNIXNU: "
+-// so test harnesses can grep for them.
++// the first EFI_SERIAL_IO_PROTOCOL instance.
+ // ---------------------------------------------------------------------------
+ 
+ VOID
+@@ -285,6 +284,7 @@ typedef struct {
+   // Provenance and diagnostics shown on screen.
+   //
+   EFI_HANDLE     Volume;           ///< Volume the config came from (NULL = built-in).
++  CHAR16         *BaseDirectory;
+   CHAR16         *SourceLabel;
+   CHAR8          Error[160];       ///< First config/kit error, empty if none.
+   CHAR8          Notice[96];       ///< Note for the menu that is not an error, empty if none.
+@@ -294,14 +294,19 @@ typedef struct {
+ 
+ /**
+   Find a config file on the boot volume or any other volume and parse it;
+-  fall back to the built-in configuration. Never fails.
++  fall back to the built-in configuration.
+ **/
+-VOID
++EFI_STATUS
+ UniXNUConfigLoad (
+   IN  EFI_HANDLE  ImageHandle,
+   OUT UNIXNU_CONFIG   *Config
+   );
+ 
++VOID
++UniXNUConfigFree (
++  IN OUT UNIXNU_CONFIG  *Config
++  );
++
+ // ---------------------------------------------------------------------------
+ // Volumes and files (Volume.c)
+ // ---------------------------------------------------------------------------
+@@ -430,7 +435,8 @@ UniXNUPrepareDeviceTree (
+   IN  UNIXNU_CONFIG  *Config,
+   IN  UNIXNU_ENTRY   *Entry,
+   OUT VOID       **Fdt OPTIONAL,
+-  OUT UINTN      *FdtSize OPTIONAL
++  OUT UINTN      *FdtSize OPTIONAL,
++  OUT UINTN      *FdtPages
+   );
+ 
+ EFI_STATUS
+@@ -478,7 +484,9 @@ EFI_STATUS
+ UniXNUBootEntry (
+   IN EFI_HANDLE  ImageHandle,
+   IN UNIXNU_CONFIG   *Config,
+-  IN UNIXNU_ENTRY    *Entry
++  IN UNIXNU_ENTRY    *Entry,
++  OUT CHAR16        *FailureReason,
++  IN UINTN          FailureReasonSize
+   );
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Main.c b/package/UniXNUPkg/Library/UniXNULib/Main.c
+index c1d76fe..6b3fa03 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Main.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Main.c
+@@ -82,7 +82,11 @@ UniXNURun (
+     UniXNUConnectAll ();
+   }
+ 
+-  UniXNUConfigLoad (ImageHandle, &Config);
++  Status = UniXNUConfigLoad (ImageHandle, &Config);
++  if (EFI_ERROR (Status)) {
++    UniXNUConfigFree (&Config);
++    return Status;
++  }
+   UniXNULog (
+     "config: %u entries, %u drivers, %u dt patches, %u acpi tables, %u slices, %u kits loaded, %u skipped",
+     (UINT32)Config.EntryCount,
+@@ -137,16 +141,23 @@ UniXNURun (
+         UINTN  Length = (Entry->Args != NULL ? StrLen (Entry->Args) : 0) + 1 + StrLen (Entry->ConfirmArgs[Choice]) + 1;
+ 
+         BootCopy.Args = AllocateZeroPool (Length * sizeof (CHAR16));
+-        if (BootCopy.Args != NULL) {
+-          UnicodeSPrint (BootCopy.Args, Length * sizeof (CHAR16), L"%s %s", Entry->Args != NULL ? Entry->Args : L"", Entry->ConfirmArgs[Choice]);
+-        } else {
+-          BootCopy.Args = Entry->Args;
++        if (BootCopy.Args == NULL) {
++          UnicodeSPrint (Ui.Notice, sizeof (Ui.Notice), L"'%s': %r", Entry->Title, EFI_OUT_OF_RESOURCES);
++          Countdown = FALSE;
++          continue;
+         }
++
++        UnicodeSPrint (BootCopy.Args, Length * sizeof (CHAR16), L"%s %s", Entry->Args != NULL ? Entry->Args : L"", Entry->ConfirmArgs[Choice]);
+       }
+     }
+ 
+-    Status = UniXNUBootEntry (ImageHandle, &Config, &BootCopy);
++    Ui.Notice[0] = L'\0';
++    Status = UniXNUBootEntry (ImageHandle, &Config, &BootCopy, Ui.Notice, sizeof (Ui.Notice));
++    if (BootCopy.Args != Entry->Args) {
++      FreePool (BootCopy.Args);
++    }
+     if ((Entry->Type == UniXNUEntryAction) && (Entry->Action == UniXNUActionExit)) {
++      UniXNUConfigFree (&Config);
+       return EFI_SUCCESS;
+     }
+ 
+@@ -154,7 +165,9 @@ UniXNURun (
+     // The payload returned or failed: back to the menu, without the
+     // countdown so a broken default cannot loop on a machine with input.
+     //
+-    UnicodeSPrint (Ui.Notice, sizeof (Ui.Notice), L"'%s' returned: %r", Entry->Title, Status);
++    if (Ui.Notice[0] == L'\0') {
++      UnicodeSPrint (Ui.Notice, sizeof (Ui.Notice), L"'%s' returned: %r", Entry->Title, Status);
++    }
+     UniXNULog ("menu: entry %u returned %r", (UINT32)Index, Status);
+     gBS->SetWatchdogTimer (0, 0, 0, NULL);
+     Countdown = FALSE;
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Menu.c b/package/UniXNUPkg/Library/UniXNULib/Menu.c
+index 4f7fd52..8eaa703 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Menu.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Menu.c
+@@ -62,8 +62,7 @@ VOID
+ DrawCountdown (
+   IN UNIXNU_UI      *Ui,
+   IN UNIXNU_CONFIG  *Config,
+-  IN INTN       RemainingMs,
+-  IN BOOLEAN    HasInput
++  IN INTN       RemainingMs
+   )
+ {
+   CHAR16  Line[128];
+@@ -174,7 +173,7 @@ UniXNUMenuRun (
+     INTN  Second = (RemainingMs < 0) ? -1 : (RemainingMs + 999) / 1000;
+ 
+     if (Second != LastShownSecond) {
+-      DrawCountdown (Ui, Config, RemainingMs, HasInput);
++      DrawCountdown (Ui, Config, RemainingMs);
+       LastShownSecond = Second;
+     }
+ 
+diff --git a/package/UniXNUPkg/Library/UniXNULib/Toml.c b/package/UniXNUPkg/Library/UniXNULib/Toml.c
+index 2934582..4f9064c 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/Toml.c
++++ b/package/UniXNUPkg/Library/UniXNULib/Toml.c
+@@ -498,6 +498,7 @@ ParseInteger (
+   TOML_NODE  *Node;
+   BOOLEAN    Negative;
+   UINT64     Value;
++  UINT64     Limit;
+   UINTN      Base;
+   UINTN      Digits;
+   UINT8      D;
+@@ -520,6 +521,7 @@ ParseInteger (
+ 
+   Value  = 0;
+   Digits = 0;
++  Limit  = Negative ? (UINT64)MAX_INT64 + 1 : (UINT64)MAX_INT64;
+   for ( ; ;) {
+     C = Peek (P);
+     if ((C == '_') && (Digits > 0)) {
+@@ -532,6 +534,11 @@ ParseInteger (
+       break;
+     }
+ 
++    if (Value > (Limit - D) / Base) {
++      Fail (P, "integer outside signed 64-bit range");
++      return NULL;
++    }
++
+     Value = Value * Base + D;
+     Digits++;
+     Advance (P);
+@@ -544,7 +551,8 @@ ParseInteger (
+ 
+   Node = NewNode (P, TomlInteger);
+   if (Node != NULL) {
+-    Node->Integer = Negative ? -(INT64)Value : (INT64)Value;
++    Node->Integer = (Negative && Value == (UINT64)MAX_INT64 + 1) ? MIN_INT64 :
++                    (Negative ? -(INT64)Value : (INT64)Value);
+   }
+ 
+   return Node;
+diff --git a/package/UniXNUPkg/Library/UniXNULib/UniXNULib.inf b/package/UniXNUPkg/Library/UniXNULib/UniXNULib.inf
+index bfdb3b3..cce5fce 100644
+--- a/package/UniXNUPkg/Library/UniXNULib/UniXNULib.inf
++++ b/package/UniXNUPkg/Library/UniXNULib/UniXNULib.inf
+@@ -30,6 +30,7 @@
+ 
+ [Packages]
+   MdePkg/MdePkg.dec
++  EmbeddedPkg/EmbeddedPkg.dec
+   UniXNUPkg/UniXNUPkg.dec
+ 
+ [LibraryClasses]

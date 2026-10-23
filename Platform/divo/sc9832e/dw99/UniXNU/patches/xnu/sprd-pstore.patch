@@ -1,0 +1,230 @@
+diff --git a/pexpert/conf/files.arm64 b/pexpert/conf/files.arm64
+--- a/pexpert/conf/files.arm64
++++ b/pexpert/conf/files.arm64
+@@ -4,5 +4,6 @@
+ pexpert/arm/pe_consistent_debug.c      standard
+ pexpert/arm/pe_identify_machine.c      standard
+ pexpert/arm/pe_init.c                  standard
++pexpert/arm/pe_sprd_pstore.c            standard
+ pexpert/arm/pe_kprintf.c               standard
+ pexpert/arm/pe_serial.c                standard
+diff --git a/pexpert/pexpert/arm/Makefile b/pexpert/pexpert/arm/Makefile
+--- a/pexpert/pexpert/arm/Makefile
++++ b/pexpert/pexpert/arm/Makefile
+@@ -13,6 +13,7 @@
+ 	consistent_debug.h \
+ 	PL192_VIC.h \
+ 	protos.h \
++	pe_sprd_pstore.h \
+ 	S3cUART.h \
+ 	S7002.h \
+ 	T8002.h
+diff --git a/pexpert/arm/pe_init.c b/pexpert/arm/pe_init.c
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -10,6 +10,9 @@
+ #include <pexpert/pexpert.h>
+ #include <pexpert/boot.h>
+ #include <pexpert/device_tree.h>
++#if defined(XNU_SPRD_PSTORE) && XNU_SPRD_PSTORE
++#include <pexpert/arm/pe_sprd_pstore.h>
++#endif
+ #include <pexpert/pe_images.h>
+ #include <kern/sched_prim.h>
+ #include <machine/machine_routines.h>
+@@ -72,7 +75,12 @@
+ static void
+ check_for_panic_log(void)
+ {
+-#if defined(PLATFORM_PANIC_LOG_PADDR) && !(defined(XNU_DT_PANIC_REGION) && XNU_DT_PANIC_REGION)
++#if defined(XNU_SPRD_PSTORE) && XNU_SPRD_PSTORE
++	if (!pe_sprd_pstore_init()) {
++		printf("SprdPstore: invalid persistent panic resources\n");
++	}
++	panic_text_len = gPanicSize - sizeof(struct embedded_panic_header);
++#elif defined(PLATFORM_PANIC_LOG_PADDR) && !(defined(XNU_DT_PANIC_REGION) && XNU_DT_PANIC_REGION)
+ 	gPanicBase = ml_io_map_wcomb(PLATFORM_PANIC_LOG_PADDR, PLATFORM_PANIC_LOG_SIZE);
+ 	panic_text_len = PLATFORM_PANIC_LOG_SIZE - sizeof(struct embedded_panic_header);
+ 	gPanicSize = PLATFORM_PANIC_LOG_SIZE;
+@@ -656,6 +664,9 @@
+ 	 */
+ 	if (gPanicBase)
+ 		CleanPoC_DcacheRegion_Force(gPanicBase, gPanicSize);
++#if defined(XNU_SPRD_PSTORE) && XNU_SPRD_PSTORE
++	pe_sprd_pstore_sync();
++#endif
+ }
+ 
+ static void
+diff --git a/iokit/Kernel/IOPlatformExpert.cpp b/iokit/Kernel/IOPlatformExpert.cpp
+--- a/iokit/Kernel/IOPlatformExpert.cpp
++++ b/iokit/Kernel/IOPlatformExpert.cpp
+@@ -815,6 +815,10 @@
+ 	return( -1 );
+ }
+ 
++#if defined(XNU_SPRD_PSTORE) && XNU_SPRD_PSTORE
++#include <pexpert/arm/pe_sprd_pstore.h>
++#endif
++
+ int PEHaltRestart(unsigned int type)
+ {
+   IOPMrootDomain    *pmRootDomain;
+@@ -908,6 +912,9 @@
+        }
+    }
+ 
++#if defined(XNU_SPRD_PSTORE) && XNU_SPRD_PSTORE
++  if (type == kPEPanicRestartCPU) return pe_sprd_pstore_reset();
++#endif
+   if (gIOPlatform) return gIOPlatform->haltRestart(type);
+   else return -1;
+ }
+diff --git a/pexpert/arm/pe_sprd_pstore.c b/pexpert/arm/pe_sprd_pstore.c
+new file mode 100644
+--- /dev/null
++++ b/pexpert/arm/pe_sprd_pstore.c
+@@ -0,0 +1,119 @@
++// SPDX-License-Identifier: BSD-2-Clause-Patent
++#include <pexpert/arm/pe_sprd_pstore.h>
++
++#if defined(XNU_SPRD_PSTORE) && XNU_SPRD_PSTORE
++#include <arm/caches_internal.h>
++#include <kern/debug.h>
++#include <machine/machine_routines.h>
++#include <pexpert/device_tree.h>
++#include <pexpert/pexpert.h>
++#include <string.h>
++
++#define PERSISTENT_RAM_SIGNATURE 0x43474244U
++#define PERSISTENT_RAM_HEADER_SIZE 12U
++#define PSCI_SYSTEM_RESET 0x84000009U
++
++static uint64_t panic_storage[XNU_SPRD_PANIC_BUFFER_SIZE / sizeof(uint64_t)];
++static vm_offset_t persistent_log;
++static uint32_t persistent_record_size;
++static bool psci_hvc;
++static const char pending_prefix[] = "====0.0-D\nXNU panic: recovery=pending\n";
++
++bool
++pe_sprd_pstore_init(void)
++{
++	DTEntry entry, psci;
++	void *property;
++	unsigned size;
++	uint64_t resource[2];
++	uint32_t record_size;
++	gPanicBase = (vm_offset_t)panic_storage;
++	gPanicSize = sizeof(panic_storage);
++	if (DTLookupEntry(NULL, "/pstore", &entry) != kSuccess ||
++	    DTGetProperty(entry, "compatible", &property, &size) != kSuccess ||
++	    size != sizeof("ramoops") || memcmp(property, "ramoops", size)) {
++		return false;
++	}
++	if (DTGetProperty(entry, "reg", &property, &size) != kSuccess || size != sizeof(resource)) {
++		return false;
++	}
++	memcpy(resource, property, size);
++	if (DTGetProperty(entry, "record-size", &property, &size) != kSuccess || size != sizeof(record_size)) {
++		return false;
++	}
++	memcpy(&record_size, property, size);
++	if (record_size <= PERSISTENT_RAM_HEADER_SIZE + sizeof(pending_prefix) ||
++	    record_size > resource[1] || (resource[0] & (sizeof(uint32_t) - 1)) ||
++	    resource[0] > UINT64_MAX - resource[1]) {
++		return false;
++	}
++	if (DTLookupEntry(NULL, "/psci", &psci) != kSuccess ||
++	    DTGetProperty(psci, "method", &property, &size) != kSuccess || size != sizeof("smc")) {
++		return false;
++	}
++	if (!memcmp(property, "hvc", size)) {
++		psci_hvc = true;
++	} else if (memcmp(property, "smc", size)) {
++		return false;
++	}
++	persistent_log = ml_io_map_wcomb(resource[0], record_size);
++	persistent_record_size = record_size;
++	return persistent_log != 0;
++}
++
++void
++pe_sprd_pstore_sync(void)
++{
++	if (!persistent_log || !panic_active() || !debug_buf_base || debug_buf_ptr <= debug_buf_base) {
++		return;
++	}
++	unsigned length = (unsigned)(debug_buf_ptr - debug_buf_base);
++	if (length > debug_buf_size) {
++		length = debug_buf_size;
++	}
++	unsigned prefix_length = sizeof(pending_prefix) - 1;
++	unsigned capacity = persistent_record_size - PERSISTENT_RAM_HEADER_SIZE;
++	if (length >= capacity - prefix_length) {
++		length = capacity - prefix_length - 1;
++	}
++	volatile uint32_t *header = (volatile uint32_t *)persistent_log;
++	volatile uint8_t *data = (volatile uint8_t *)(persistent_log + PERSISTENT_RAM_HEADER_SIZE);
++	// Publish a complete linear ramoops record only after all payload writes reach memory.
++	header[0] = 0;
++	__asm__ volatile("dsb sy" ::: "memory");
++	for (unsigned i = 0; i < prefix_length; i++) {
++		data[i] = (uint8_t)pending_prefix[i];
++	}
++	for (unsigned i = 0; i < length; i++) {
++		data[prefix_length + i] = (uint8_t)debug_buf_base[i];
++	}
++	header[1] = prefix_length + length;
++	header[2] = prefix_length + length;
++	__asm__ volatile("dsb sy" ::: "memory");
++	header[0] = PERSISTENT_RAM_SIGNATURE;
++	CleanPoC_DcacheRegion_Force(persistent_log, persistent_record_size);
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++int
++pe_sprd_pstore_reset(void)
++{
++	if (!persistent_log || !panic_active()) {
++		return -1;
++	}
++	pe_sprd_pstore_sync();
++	register uint64_t x0 __asm__("x0") = PSCI_SYSTEM_RESET;
++	register uint64_t x1 __asm__("x1") = 0;
++	register uint64_t x2 __asm__("x2") = 0;
++	register uint64_t x3 __asm__("x3") = 0;
++	if (psci_hvc) {
++		__asm__ volatile("hvc #0" : "+r" (x0), "+r" (x1), "+r" (x2), "+r" (x3) : :
++		    "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "memory", "cc");
++	} else {
++		__asm__ volatile("smc #0" : "+r" (x0), "+r" (x1), "+r" (x2), "+r" (x3) : :
++		    "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "memory", "cc");
++	}
++	printf("SprdPstore: SYSTEM_RESET returned %lld\n", (long long)x0);
++	return -1;
++}
++#endif
+diff --git a/pexpert/pexpert/arm/pe_sprd_pstore.h b/pexpert/pexpert/arm/pe_sprd_pstore.h
+new file mode 100644
+--- /dev/null
++++ b/pexpert/pexpert/arm/pe_sprd_pstore.h
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: BSD-2-Clause-Patent
++#ifndef PE_SPRD_PSTORE_H
++#define PE_SPRD_PSTORE_H
++
++#include <stdbool.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++bool pe_sprd_pstore_init(void);
++void pe_sprd_pstore_sync(void);
++int pe_sprd_pstore_reset(void);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif

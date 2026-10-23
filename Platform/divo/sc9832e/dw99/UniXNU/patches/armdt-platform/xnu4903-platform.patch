@@ -1,0 +1,121 @@
+--- a/ArmDTPlatform.cpp
++++ b/ArmDTPlatform.cpp
+@@ -1,16 +1,4 @@
+ // SPDX-License-Identifier: BSD-2-Clause-Patent
+-//
+-// Generic AArch64 Darwin platform expert for a supplied Apple-format device
+-// tree. It derives from XNU's real IODTPlatformExpert and relies on the
+-// platform's own DT root name ("device-tree") for matching. No board name,
+-// SoC address or vendor identity is compiled into this source.
+-//
+-// The DT must contain the nodes XNU's IODT platform path consumes:
+-//   /chosen with a CHRP NVRAM proxy (nvram-bank-size, nvram-proxy-data)
+-//   /options, /cpus, /arm-io and /defaults
+-// The NVRAM proxy is required so the real IODTNVRAM is published before any
+-// security initialization. This driver does not fabricate NVRAM or suppress
+-// a missing one; absent inputs make configure() fail.
+ 
+ #include <IOKit/IOPlatformExpert.h>
+ #include <IOKit/IODeviceTreeSupport.h>
+@@ -19,7 +7,7 @@
+ #include <libkern/c++/OSIterator.h>
+ #include <pexpert/pexpert.h>
+ 
+-// Observation counters describe actual published nubs, not started drivers.
++// Nub publication does not imply that a matching driver has started.
+ extern "C" {
+ volatile uint32_t armdt_platform_configured = 0;
+ volatile uint32_t armdt_platform_child_count = 0;
+@@ -43,9 +31,7 @@
+ 
+ OSDefineMetaClassAndStructors (ArmDTPlatform, IODTPlatformExpert)
+ 
+-// Serialized empty name lists: XNU's processTopLevel() treats a null pointer
+-// as "every entry" (remove every child), not as "nothing". An empty list
+-// genuinely selects no entry, so the supplied device tree is preserved.
++// A null matching list selects every node; an empty serialized list selects none.
+ const char *ArmDTPlatform::deleteList (void)
+ {
+   return "()";
+@@ -76,14 +62,7 @@
+   if (bus == nullptr) {
+     return false;
+   }
+-  // IODTPlatformExpert's IOPlatformDevice nubs resolve resources through
+-  // their provider's IOPlatformExpert::getNubResources. They must therefore
+-  // be attached to this platform expert, not to the arm-io IOPlatformDevice
+-  // (ArmVirtPlatform uses the same parent relationship). The device-tree
+-  // parent remains arm-io, so reg/ranges resolution still follows the bus.
+-  // Publish every real arm-io child, not only the first pattern match. The
+-  // GIC lives here, and the UFS host/PHY nodes must be visible to their native
+-  // drivers too. processTopLevel() still uses deleteList()/excludeList().
++  // Service parents resolve resources; device-tree parents retain reg/ranges translation.
+   OSIterator *iterator = bus->getChildIterator (gIODTPlane);
+   bus->release ();
+   if (iterator == nullptr) {
+@@ -109,17 +88,6 @@
+   return true;
+ }
+ 
+-static void platformStageReset (void)
+-{
+-  // PSCI SYSTEM_RESET via the same SMC conduit as the entry reset probe.
+-  register uint64_t x0 __asm__ ("x0") = 0x84000009;
+-  register uint64_t x1 __asm__ ("x1") = 0;
+-  register uint64_t x2 __asm__ ("x2") = 0;
+-  register uint64_t x3 __asm__ ("x3") = 0;
+-  __asm__ volatile ("smc #0" : "+r" (x0) : "r" (x1), "r" (x2), "r" (x3) : "memory");
+-  for (;;) { __asm__ volatile ("wfe"); }
+-}
+-
+ bool ArmDTPlatform::configure (IOService *provider)
+ {
+   IORegistryEntry *cpus = provider->childFromPath ("cpus", gIODTPlane);
+@@ -140,21 +108,9 @@
+     IOLog ("ArmDTPlatform: /chosen does not supply a usable CHRP NVRAM proxy\n");
+     return false;
+   }
+-  unsigned platformStage = 0;
+-  PE_parse_boot_argn ("sheng-platform-stage", &platformStage, sizeof (platformStage));
+-  if (platformStage == 1) {
+-    platformStageReset ();
+-  }
+-
+-  // The inherited implementation publishes real IODTNVRAM from /chosen,
+-  // then attaches the CPU and top-level nubs. No identity or resource is
+-  // invented here; failure is returned instead of replaced with a stub.
+   if (!IODTPlatformExpert::configure (provider)) {
+     return false;
+   }
+-  if (platformStage == 2) {
+-    platformStageReset ();
+-  }
+ 
+   OSIterator *iterator = getChildIterator (gIOServicePlane);
+   if (iterator == nullptr) {
+@@ -186,25 +142,9 @@
+   armdt_platform_defaults_count = defaultsCount;
+   armdt_platform_nvram_proxy = 1;
+   armdt_platform_configured = 1;
+-  // Publish the bus child devices (interrupt controller, VirtIO MMIO, ...)
+-  // as real IOPlatformDevice nubs. No driver is started here.
+   if (!createDeviceNubs (provider)) {
+     return false;
+   }
+-  if (platformStage == 3) {
+-    platformStageReset ();
+-  }
+-  // Explicit hardware A/B diagnostic: reach the end of the real platform
+-  // configuration and panic before publishing the service. The payload's
+-  // panic-screen probe makes this observable without a serial console.
+-  unsigned platformProbe = 0;
+-  PE_parse_boot_argn ("sheng-platform-panic", &platformProbe, sizeof (platformProbe));
+-  if (platformProbe != 0 || platformStage == 4) {
+-    platformStageReset ();
+-  }
+   registerService ();
+-  if (platformStage == 5) {
+-    platformStageReset ();
+-  }
+   return true;
+ }

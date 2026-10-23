@@ -1,0 +1,183 @@
+diff --git a/config/MASTER.arm64.bcm2837 b/config/MASTER.arm64.bcm2837
+index 65dd486..127f05f 100644
+--- a/config/MASTER.arm64.bcm2837
++++ b/config/MASTER.arm64.bcm2837
+@@ -41,7 +41,7 @@
+ #  LIBKERN_RELEASE =[ LIBKERN_BASE ]
+ #  LIBKERN_DEV =    [ LIBKERN_BASE iotracking ]
+ #  LIBKERN_DEBUG =  [ LIBKERN_BASE iotracking ]
+-#  PERF_DBG_BASE =  [ mach_kdp config_serial_kdp kperf kpc ]
++#  PERF_DBG_BASE =  [ mach_kdp config_serial_kdp kperf ]
+ #  PERF_DBG_RELEASE=[ PERF_DBG_BASE ist_kdebug ]
+ #  PERF_DBG_DEV =   [ PERF_DBG_BASE config_dtrace zleaks kdp_interactive_debugging alternate_debugger interrupt_masked_debug ]
+ #  PERF_DBG_DEBUG = [ PERF_DBG_BASE config_dtrace zleaks kdp_interactive_debugging alternate_debugger interrupt_masked_debug ]
+diff --git a/osfmk/arm64/pcb.c b/osfmk/arm64/pcb.c
+index d8809b3..a622eba 100644
+--- a/osfmk/arm64/pcb.c
++++ b/osfmk/arm64/pcb.c
+@@ -42,7 +42,9 @@
+ #include <kern/spl.h>
+ #include <kern/machine.h>
+ #include <kern/kalloc.h>
++#if KPC
+ #include <kern/kpc.h>
++#endif
+ 
+ #if MONOTONIC
+ #include <kern/monotonic.h>
+@@ -109,7 +111,9 @@ machine_switch_context(
+ 	if (old == new)
+ 		panic("machine_switch_context");
+ 
++#if KPC
+ 	kpc_off_cpu(old);
++#endif
+ 
+ 
+ 	new_pmap = new->map->pmap;
+@@ -327,7 +331,9 @@ machine_stack_handoff(
+ 	pmap_t          new_pmap;
+ 	cpu_data_t	*cpu_data_ptr;
+ 
++#if KPC
+ 	kpc_off_cpu(old);
++#endif
+ 
+ 	stack = machine_stack_detach(old);
+ 	cpu_data_ptr = getCpuDatap();
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -35,7 +35,9 @@
+ #include <arm/trap.h> /* for IS_ARM_GDB_TRAP() et al */
+ #include <arm64/proc_reg.h>
+ #include <arm64/machine_machdep.h>
++#if MONOTONIC
+ #include <arm64/monotonic.h>
++#endif
+ 
+ #include <kern/debug.h>
+ #include <kern/thread.h>
+diff --git a/osfmk/kern/sched_prim.c b/osfmk/kern/sched_prim.c
+index 751b574..1d65039 100644
+--- a/osfmk/kern/sched_prim.c
++++ b/osfmk/kern/sched_prim.c
+@@ -119,7 +119,9 @@
+ 
+ #include <sys/kdebug.h>
+ #include <kperf/kperf.h>
++#if KPC
+ #include <kern/kpc.h>
++#endif
+ #include <san/kasan.h>
+ #include <kern/pms.h>
+ #include <kern/host.h>
+diff --git a/osfmk/kern/task.c b/osfmk/kern/task.c
+--- a/osfmk/kern/task.c
++++ b/osfmk/kern/task.c
+@@ -1233,7 +1233,9 @@
+ 	new_task->affinity_space = NULL;
+ 
++#if KPC
+ 	new_task->t_kpc = 0;
++#endif
+ 
+ 	new_task->pidsuspended = FALSE;
+ 	new_task->frozen = FALSE;
+ 	new_task->changing_freeze_state = FALSE;
+diff --git a/osfmk/kperf/action.c b/osfmk/kperf/action.c
+index 94afda3..c541a43 100644
+--- a/osfmk/kperf/action.c
++++ b/osfmk/kperf/action.c
+@@ -240,11 +240,13 @@ kperf_sample_internal(struct kperf_sample *sbuf,
+ 		}
+ 	}
+ 
++#if KPC
+ 	if (sample_what & SAMPLER_PMC_THREAD) {
+ 		kperf_kpc_thread_sample(&(sbuf->kpcdata), sample_what);
+ 	} else if (sample_what & SAMPLER_PMC_CPU) {
+ 		kperf_kpc_cpu_sample(&(sbuf->kpcdata), sample_what);
+ 	}
++#endif
+ 
+ log_sample:
+ 	/* lookup the user tag, if any */
+@@ -324,11 +326,13 @@ log_sample:
+ 		}
+ 	}
+ 
++#if KPC
+ 	if (sample_what & SAMPLER_PMC_THREAD) {
+ 		kperf_kpc_thread_log(&(sbuf->kpcdata));
+ 	} else if (sample_what & SAMPLER_PMC_CPU) {
+ 		kperf_kpc_cpu_log(&(sbuf->kpcdata));
+ 	}
++#endif
+ 
+ log_sample_end:
+ 	BUF_DATA(PERF_GEN_EVENT | DBG_FUNC_END, sample_what, on_idle_thread ? 1 : 0);
+@@ -525,6 +529,12 @@ kperf_action_set_samplers(unsigned actionid, uint32_t samplers)
+ 		return EINVAL;
+ 	}
+ 
++#if !KPC
++	if (samplers & (SAMPLER_PMC_THREAD | SAMPLER_PMC_CPU | SAMPLER_PMC_CONFIG)) {
++		return ENOTSUP;
++	}
++#endif
++
+ 	/* disallow both CPU and thread counters to be sampled in the same
+ 	 * action */
+ 	if ((samplers & SAMPLER_PMC_THREAD) && (samplers & SAMPLER_PMC_CPU)) {
+diff --git a/osfmk/kperf/kperf_kpc.c b/osfmk/kperf/kperf_kpc.c
+index 5090e8c..a951178 100644
+--- a/osfmk/kperf/kperf_kpc.c
++++ b/osfmk/kperf/kperf_kpc.c
+@@ -35,17 +35,22 @@
+ #include <kperf/context.h>
+ #include <kperf/pet.h>
+ #include <kperf/kperf_kpc.h>
++#if KPC
+ #include <kern/kpc.h> /* kpc_cswitch_context, kpc_threads_counting */
++#endif
+ 
+ void
+ kperf_kpc_thread_ast(thread_t thread)
+ {
++#if KPC
+ 	kpc_thread_ast_handler(thread);
++#endif
+ 	kperf_thread_ast_handler(thread);
+ 
+ 	thread->kperf_flags = 0;
+ }
+ 
++#if KPC
+ void
+ kperf_kpc_thread_sample(struct kpcdata *kpcd, int sample_config)
+ {
+@@ -159,3 +164,4 @@ kperf_kpc_thread_log(const struct kpcdata *kpcd)
+ 	kperf_kpc_config_log(kpcd);
+ 	kperf_kpc_log(PERF_KPC_DATA_THREAD, PERF_KPC_DATA_THREAD32, kpcd);
+ }
++#endif
+diff --git a/osfmk/kperf/kperf_kpc.h b/osfmk/kperf/kperf_kpc.h
+index 84ec687..db384ef 100644
+--- a/osfmk/kperf/kperf_kpc.h
++++ b/osfmk/kperf/kperf_kpc.h
+@@ -36,6 +36,7 @@
+ void kperf_kpc_thread_ast(thread_t thread);
+ 
+ /* KPC sample data */
++#if KPC
+ struct kpcdata
+ {
+ 	int      curcpu;
+@@ -50,5 +51,6 @@ void kperf_kpc_thread_sample(struct kpcdata *, int);
+ void kperf_kpc_cpu_sample(struct kpcdata *, int);
+ void kperf_kpc_thread_log(const struct kpcdata *);
+ void kperf_kpc_cpu_log(const struct kpcdata *);
++#endif
+ 
+ #endif /* __KPERF_KPC_H__ */

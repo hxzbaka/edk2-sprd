@@ -1,0 +1,72 @@
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index f709217..f9813dc 100644
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -38,6 +38,28 @@
+ #endif /* __ARM_KERNEL_PROTECT__ */
+ 
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++// The interrupt stack is addressed physically until the bootstrap MMU is enabled.
++.macro SPRD_BOOT_MARKER color
++	mov		x27, sp
++	mov		x28, lr
++	adrp	x16, EXT(intstack_top)@page
++	add		x16, x16, EXT(intstack_top)@pageoff
++	mov		sp, x16
++	mov		x0, x20
++	mov		w1, #(\color & 0xffff)
++	movk	w1, #(\color >> 16), lsl #16
++	bl		EXT(sprd_dpu_boot_marker)
++	cbz		w0, Lsprd_boot_marker_failed
++	mov		sp, x27
++	mov		lr, x28
++	mov		x0, x20
++.endmacro
++#else
++.macro SPRD_BOOT_MARKER color
++.endmacro
++#endif
++
+ .macro MSR_VBAR_EL1_X0
+ #if defined(KERNEL_INTEGRITY_KTRR)
+ 	mov	x1, lr
+@@ -449,6 +471,11 @@ start_cpu:
+ 	.globl EXT(start_first_cpu)
+ LEXT(start_first_cpu)
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	mov		x20, x0
++	SPRD_BOOT_MARKER 0xffff0000
++#endif
++
+ 	// Unlock the core for debugging
+ 	msr		OSLAR_EL1, xzr
+ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
+@@ -603,8 +630,14 @@ Linvalidate_bootstrap:							// do {
+ 	/* Ensure TTEs are visible */
+ 	dsb		ish
+ 
++	SPRD_BOOT_MARKER 0xff00ffff
+ 	b		common_start
+ 
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++Lsprd_boot_marker_failed:
++	b		Lsprd_boot_marker_failed
++#endif
++
+ /*
+  * Begin common CPU initialization
+  *
+@@ -725,6 +758,11 @@ common_start:
+ 
+ 
+ 	// Enable caches and MMU
++#if defined(XNU_SPRD_BOOT_DIAGNOSTICS) && XNU_SPRD_BOOT_DIAGNOSTICS
++	cbnz	x21, Lsprd_boot_mmu_marker_done
++	SPRD_BOOT_MARKER 0xffff00ff
++Lsprd_boot_mmu_marker_done:
++#endif
+ 	mov		x0, #(SCTLR_EL1_DEFAULT & 0xFFFF)
+ 	mov		x1, #(SCTLR_EL1_DEFAULT & 0xFFFF0000)
+ 	orr		x0, x0, x1

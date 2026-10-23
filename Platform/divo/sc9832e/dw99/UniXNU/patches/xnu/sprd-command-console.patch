@@ -1,0 +1,331 @@
+--- a/osfmk/console/Makefile
++++ b/osfmk/console/Makefile
+@@ -9,6 +9,7 @@
+ DATAFILES =
+ 
+ PRIVATE_DATAFILES = \
++	sprd_dpu_console.h \
+ 	video_console.h \
+ 	serial_protos.h
+ 
+--- a/osfmk/conf/files.arm64
++++ b/osfmk/conf/files.arm64
+@@ -20,6 +20,7 @@
+ osfmk/arm64/lz4_decode_arm64.s  standard
+ osfmk/arm64/lz4_encode_arm64.s  standard
+ osfmk/arm64/bcopy.s standard
++osfmk/console/sprd_dpu_console.c optional video_console
+ osfmk/arm64/bzero.s standard
+ osfmk/arm/caches.c		standard
+ osfmk/arm64/caches_asm.s		standard
+--- /dev/null
++++ b/osfmk/console/sprd_dpu_console.c
+@@ -0,0 +1,247 @@
++// SPDX-License-Identifier: BSD-2-Clause-Patent
++#include <console/sprd_dpu_console.h>
++
++#if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
++#include <arm/caches_internal.h>
++#include <kern/debug.h>
++#include <machine/machine_routines.h>
++#include <pexpert/device_tree.h>
++#include <string.h>
++
++#define DPU_CTRL 0x0004
++#define DPU_LAYER_ADDRESS 0x0020
++#define DPU_LAYER_CONTROL 0x0030
++#define DPU_LAYER_SIZE 0x0034
++#define DPU_LAYER_PITCH 0x0038
++#define DPU_INT_ENABLE 0x0160
++#define DPU_INT_CLEAR 0x0164
++#define DPU_INT_STATUS 0x0168
++#define DPU_INT_RAW 0x016c
++#define DPU_MMU_ENABLE 0x0800
++#define DPU_RUN (1U << 0)
++#define DPU_COMMAND_MODE (1U << 2)
++#define DPU_DONE (1U << 0)
++#define DPU_TE (1U << 1)
++#define DPU_UNDERFLOW (1U << 2)
++#define DPU_LAYER_ENABLE (1U << 0)
++#define DPU_LAYER_FORMAT_MASK (15U << 4)
++#define DPU_LAYER_ARGB8888 (2U << 4)
++
++static vm_offset_t dpu_base;
++static vm_offset_t framebuffer;
++static unsigned framebuffer_size;
++static uint64_t framebuffer_physical;
++static uint64_t timeout_ticks;
++static uint32_t interrupt_id;
++static bool frame_in_flight;
++static bool interrupts_started;
++static bool configured;
++static uint32_t interrupt_mask = DPU_DONE | DPU_TE | DPU_UNDERFLOW;
++volatile uint64_t sprd_dpu_underflows;
++volatile uint64_t sprd_dpu_timeouts;
++
++static uint32_t
++read_register(uint32_t offset)
++{
++	return *(volatile uint32_t *)(dpu_base + offset);
++}
++
++static void
++write_register(uint32_t offset, uint32_t value)
++{
++	*(volatile uint32_t *)(dpu_base + offset) = value;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++static uint64_t
++counter(void)
++{
++	uint64_t value;
++	__asm__ volatile("isb\n\tmrs %0, cntpct_el0" : "=r" (value) :: "memory");
++	return value;
++}
++
++static bool
++wait_done(void)
++{
++	uint64_t start = counter();
++	while (!(read_register(DPU_INT_RAW) & DPU_DONE)) {
++		if (counter() - start >= timeout_ticks) {
++			write_register(DPU_INT_ENABLE, 0);
++			framebuffer = 0;
++			sprd_dpu_timeouts++;
++			return false;
++		}
++	}
++	frame_in_flight = false;
++	return true;
++}
++
++static void
++submit_frame(void)
++{
++	// The display DMA is outside CPU cache coherency even on coherent XNU targets.
++	CleanPoC_DcacheRegion_Force(framebuffer, framebuffer_size);
++	write_register(DPU_INT_CLEAR, DPU_DONE);
++	frame_in_flight = true;
++	write_register(DPU_CTRL, read_register(DPU_CTRL) | DPU_RUN);
++}
++
++void
++sprd_dpu_console_bind(vm_offset_t address, uint64_t physical, uint32_t width,
++    uint32_t height, uint32_t rowbytes, uint32_t depth)
++{
++	DTEntry entry, bus;
++	void *property;
++	unsigned int size;
++	uint64_t regions[2], ranges[3];
++	uint32_t timeout_us;
++	uint64_t frequency;
++	if (sprd_dpu_timeouts) {
++		return;
++	}
++	if (!configured) {
++		if (DTLookupEntry(NULL, "/arm-io/dpu", &entry) != kSuccess) {
++			return;
++		}
++		if (DTGetProperty(entry, "compatible", &property, &size) != kSuccess ||
++		    size != sizeof("sprd,dpu-lite-r1p0") || memcmp(property, "sprd,dpu-lite-r1p0", size)) {
++			panic("SprdDpuConsole: unsupported display controller");
++		}
++		if (DTGetProperty(entry, "reg", &property, &size) != kSuccess || size != sizeof(regions)) {
++			panic("SprdDpuConsole: invalid register resource");
++		}
++		memcpy(regions, property, size);
++		if (DTLookupEntry(NULL, "/arm-io", &bus) != kSuccess ||
++		    DTGetProperty(bus, "ranges", &property, &size) != kSuccess || size != sizeof(ranges)) {
++			panic("SprdDpuConsole: invalid bus address translation");
++		}
++		memcpy(ranges, property, size);
++		if (regions[1] < DPU_MMU_ENABLE + sizeof(uint32_t) || regions[0] < ranges[0] ||
++		    regions[0] - ranges[0] > ranges[2] || regions[1] > ranges[2] - (regions[0] - ranges[0]) ||
++		    ranges[1] > UINT64_MAX - (regions[0] - ranges[0])) {
++			panic("SprdDpuConsole: register resource outside bus");
++		}
++		if (DTGetProperty(entry, "interrupt", &property, &size) != kSuccess || size != sizeof(interrupt_id)) {
++			panic("SprdDpuConsole: missing interrupt");
++		}
++		memcpy(&interrupt_id, property, size);
++		if (DTGetProperty(entry, "frame-timeout-us", &property, &size) != kSuccess || size != sizeof(timeout_us)) {
++			panic("SprdDpuConsole: missing completion timeout");
++		}
++		memcpy(&timeout_us, property, size);
++		__asm__ volatile("mrs %0, cntfrq_el0" : "=r" (frequency));
++		if (!timeout_us || !frequency || frequency > UINT64_MAX / timeout_us) {
++			panic("SprdDpuConsole: invalid completion timeout");
++		}
++		timeout_ticks = frequency * timeout_us / 1000000;
++		dpu_base = ml_io_map(ranges[1] + regions[0] - ranges[0], regions[1]);
++		if (!dpu_base || !timeout_ticks) {
++			panic("SprdDpuConsole: display resource mapping failed");
++		}
++		write_register(DPU_INT_ENABLE, 0);
++		// Firmware leaves DONE latched after its final completed command transfer.
++		if (!wait_done()) {
++			return;
++		}
++		framebuffer_physical = physical;
++		configured = true;
++	}
++	boolean_t enabled = ml_set_interrupts_enabled(FALSE);
++	framebuffer = 0;
++	if (!physical) {
++		physical = framebuffer_physical;
++	}
++	DTEntry chosen;
++	uint64_t dram_base;
++	if (DTLookupEntry(NULL, "/chosen", &chosen) != kSuccess ||
++	    DTGetProperty(chosen, "dram-base", &property, &size) != kSuccess || size != sizeof(dram_base)) {
++		panic("SprdDpuConsole: missing DRAM address translation");
++	}
++	memcpy(&dram_base, property, size);
++	uint32_t layer = read_register(DPU_LAYER_CONTROL);
++	if (!address || depth != 32 || !width || !height || width > UINT16_MAX || height > UINT16_MAX ||
++	    rowbytes % sizeof(uint32_t) || rowbytes / sizeof(uint32_t) < width || rowbytes > UINT32_MAX / height ||
++	    !(read_register(DPU_CTRL) & DPU_COMMAND_MODE) || read_register(DPU_MMU_ENABLE) ||
++	    !(layer & DPU_LAYER_ENABLE) || (layer & DPU_LAYER_FORMAT_MASK) != DPU_LAYER_ARGB8888 ||
++	    read_register(DPU_LAYER_SIZE) != ((height << 16) | width) ||
++	    read_register(DPU_LAYER_PITCH) != rowbytes / sizeof(uint32_t) ||
++	    physical < dram_base || physical - dram_base != read_register(DPU_LAYER_ADDRESS)) {
++		panic("SprdDpuConsole: firmware framebuffer configuration mismatch");
++	}
++	framebuffer = address;
++	framebuffer_physical = physical;
++	framebuffer_size = rowbytes * height;
++	ml_set_interrupts_enabled(enabled);
++}
++
++void
++sprd_dpu_console_flush(bool poll)
++{
++	boolean_t enabled = ml_set_interrupts_enabled(FALSE);
++	if (dpu_base && framebuffer) {
++		if (poll || panic_active()) {
++			// Polling owns DONE while debugger or panic execution can suppress IRQ delivery.
++			write_register(DPU_INT_ENABLE, 0);
++			if (frame_in_flight && !wait_done()) {
++				goto out;
++			}
++			submit_frame();
++			if (!wait_done()) {
++				goto out;
++			}
++			if (interrupts_started && !panic_active()) {
++				write_register(DPU_INT_CLEAR, DPU_DONE | DPU_TE);
++				write_register(DPU_INT_ENABLE, interrupt_mask);
++			}
++		} else if (!interrupts_started) {
++			submit_frame();
++			if (!wait_done()) {
++				goto out;
++			}
++		}
++	}
++out:
++	ml_set_interrupts_enabled(enabled);
++}
++
++static void
++display_interrupt(void *context)
++{
++	(void)context;
++	uint32_t status = read_register(DPU_INT_STATUS);
++	write_register(DPU_INT_CLEAR, status);
++	if (status & DPU_UNDERFLOW) {
++		interrupt_mask &= ~DPU_UNDERFLOW;
++		write_register(DPU_INT_ENABLE, interrupt_mask);
++		sprd_dpu_underflows++;
++	}
++	if (status & DPU_DONE) {
++		frame_in_flight = false;
++	}
++	if ((status & DPU_TE) && !frame_in_flight) {
++		submit_frame();
++	}
++}
++
++bool
++sprd_dpu_console_start_interrupts(sprd_dpu_spi_register_t register_spi)
++{
++	if (!configured || sprd_dpu_timeouts) {
++		return false;
++	}
++	boolean_t enabled = ml_set_interrupts_enabled(FALSE);
++	if (frame_in_flight && !wait_done()) {
++		ml_set_interrupts_enabled(enabled);
++		return false;
++	}
++	int32_t result = register_spi(interrupt_id, false, display_interrupt, NULL, NULL, NULL);
++	if (result == 0) {
++		write_register(DPU_INT_CLEAR, DPU_DONE | DPU_TE | DPU_UNDERFLOW);
++		interrupts_started = true;
++		write_register(DPU_INT_ENABLE, interrupt_mask);
++	}
++	ml_set_interrupts_enabled(enabled);
++	return result == 0;
++}
++#endif
+--- /dev/null
++++ b/osfmk/console/sprd_dpu_console.h
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: BSD-2-Clause-Patent
++#ifndef SPRD_DPU_CONSOLE_H
++#define SPRD_DPU_CONSOLE_H
++
++#include <mach/mach_types.h>
++#include <stdbool.h>
++#include <stdint.h>
++
++typedef int32_t (*sprd_dpu_spi_register_t)(uint32_t, bool, void (*)(void *), void *, uint32_t *, uint64_t *);
++
++#if defined(XNU_SPRD_DPU_CONSOLE) && XNU_SPRD_DPU_CONSOLE
++void sprd_dpu_console_bind(vm_offset_t, uint64_t, uint32_t, uint32_t, uint32_t, uint32_t);
++void sprd_dpu_console_flush(bool);
++bool sprd_dpu_console_start_interrupts(sprd_dpu_spi_register_t);
++#else
++#define sprd_dpu_console_bind(...) ((void)0)
++#define sprd_dpu_console_flush(...) ((void)0)
++#endif
++
++#endif
+--- a/osfmk/console/video_console.c
++++ b/osfmk/console/video_console.c
+@@ -89,6 +89,7 @@
+  */
+ 
+ #include <console/video_console.h>
++#include <console/sprd_dpu_console.h>
+ #include <console/serial_protos.h>
+ 
+ #include <kern/kern_types.h>
+@@ -1313,6 +1314,9 @@
+ 		x86_filter_TLB_coherency_interrupts(FALSE);
+ #endif
+ 		splx(s);
++		if (c == '\n' || panic_active()) {
++			sprd_dpu_console_flush(panic_active());
++		}
+ 	}
+ }
+ 
+@@ -2881,6 +2885,9 @@
+ 		    vinfo = new_vinfo;
+ 		}
+ 
++		sprd_dpu_console_bind(vinfo.v_baseaddr, vinfo.v_physaddr, vinfo.v_width,
++		    vinfo.v_height, vinfo.v_rowbytes, vinfo.v_depth);
++
+ 		// If we changed the virtual address, remove the old mapping
+ 		if (newVideoVirt != 0)
+ 		{
+@@ -3028,6 +3035,7 @@
+ 		}
+ #endif
+ 	}
++	sprd_dpu_console_flush(false);
+ }
+ 
+ void vcattach(void); /* XXX gcc 4 warning cleanup */

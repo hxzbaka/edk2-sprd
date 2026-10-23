@@ -1,0 +1,39 @@
+[board]
+name = "dw99"
+soc = "SC9832E"
+description = "Divo DW99"
+
+[kernel]
+defconfig = "dw99_defconfig"
+script = "scripts/build-xnu.sh"
+
+[build]
+upstream = "Common/UniXNU"
+python_modules = "scripts"
+output = "Build/UniXNU"
+submodules = ["drivers/ArmCpu", "drivers/ArmDTPlatform", "kits/NativePrelink"]
+patch_modules = ["xnu", "libpthread", "libdispatch", "armcpu", "armdt-platform", "native-prelink", "iostorage"]
+scripts = ["build-xnu.sh", "build-xnu.toml", "dw99-feeds.toml", "dw99-hardware.toml", "make-dw99-adt.py"]
+
+[ipsw]
+product = "iPhone8,1"
+version = "12.1"
+build = "16B92"
+device_class = "n71ap"
+chip_id = 0x8000
+board_id = 0x04
+
+[payload]
+volume = "DW99XNU"
+size_mib = 256
+dram_size = 0xC0000000
+loader = "firmware"
+kernel_args = ["-v", "cpus=1", "rd=md0"]
+
+[payload.adt]
+tool = "scripts/make-dw99-adt.py"
+owned_memory_size = 0x20000000
+cpu_regs = "0"
+psci_method = "smc"
+unique_chip_id = "required"
+chip_id = 0x9832E

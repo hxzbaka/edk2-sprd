@@ -314,7 +314,7 @@ SprdDsiPrepareForTransfer(IN CONST SPRD_DISPLAY_CONFIG *Config)
   MmioWrite32(
       Config->DsiBase + DSI_MODE_CFG,
       Config->VideoMode ? DSI_MODE_VIDEO : DSI_MODE_COMMAND);
-  // Linux resets the host state after changing modes, before requesting HS clock.
+  // Mode changes require a host reset before enabling the HS clock.
   DsiPowerEnable(Config, FALSE);
   gBS->Stall(100);
   DsiPowerEnable(Config, TRUE);

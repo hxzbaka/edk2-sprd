@@ -1,4 +1,3 @@
-/* SimpleFbDxe: Simple FrameBuffer */
 #include <Guid/EventGroup.h>
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -15,30 +14,6 @@
 #include <Protocol/GraphicsOutput.h>
 #include <Protocol/HardwareInterrupt.h>
 #include <Uefi.h>
-
-/// Defines
-/*
- * Convert enum video_log2_bpp to bytes and bits. Note we omit the outer
- * brackets to allow multiplication by fractional pixels.
- */
-#define VNBYTES(bpix) (1 << (bpix)) / 8
-#define VNBITS(bpix) (1 << (bpix))
-
-#define FB_BITS_PER_PIXEL (32)
-#define FB_BYTES_PER_PIXEL (FB_BITS_PER_PIXEL / 8)
-
-/*
- * Bits per pixel selector. Each value n is such that the bits-per-pixel is
- * 2 ^ n
- */
-enum video_log2_bpp {
-  VIDEO_BPP1 = 0,
-  VIDEO_BPP2,
-  VIDEO_BPP4,
-  VIDEO_BPP8,
-  VIDEO_BPP16,
-  VIDEO_BPP32,
-};
 
 typedef struct {
   VENDOR_DEVICE_PATH DisplayDevicePath;
@@ -57,15 +32,15 @@ DISPLAY_DEVICE_PATH mDisplayDevicePath = {
      END_ENTIRE_DEVICE_PATH_SUBTYPE,
      {sizeof(EFI_DEVICE_PATH_PROTOCOL), 0}}};
 
-/// Declares
-
 STATIC FRAME_BUFFER_CONFIGURE *mFrameBufferBltLibConfigure;
 STATIC UINTN                   mFrameBufferBltLibConfigureSize;
 STATIC EFI_EVENT                       mExitBootServicesEvent;
 STATIC EFI_HARDWARE_INTERRUPT_PROTOCOL *mHardwareInterrupt;
 STATIC BOOLEAN                         mDpuInterruptRegistered;
+STATIC BOOLEAN                         mDpuFrameInFlight;
 
 #define DPU_INT_ERROR_MASK BIT2
+#define DPU_INT_RAW        0x016C
 
 STATIC
 EFI_STATUS
@@ -97,7 +72,37 @@ STATIC VOID EdpiTriggerFrame(VOID)
 {
   UINTN DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
 
+  if (mDpuFrameInFlight) {
+    return;
+  }
+
+  MmioWrite32(
+      DpuBase + FixedPcdGet32(PcdDpuIntClrReg),
+      FixedPcdGet32(PcdDpuIntDoneBit));
+  mDpuFrameInFlight = TRUE;
   MmioOr32(DpuBase + FixedPcdGet32(PcdDpuCtrlReg), BIT0);
+}
+
+STATIC EFI_STATUS EdpiWaitFrameDone(VOID)
+{
+  UINTN DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
+  UINT32 Retry;
+
+  if (!mDpuFrameInFlight) {
+    return EFI_SUCCESS;
+  }
+
+  for (Retry = 0; Retry < 500; Retry++) {
+    if ((MmioRead32(DpuBase + DPU_INT_RAW) &
+         FixedPcdGet32(PcdDpuIntDoneBit)) != 0) {
+      mDpuFrameInFlight = FALSE;
+      return EFI_SUCCESS;
+    }
+
+    gBS->Stall(1000);
+  }
+
+  return EFI_TIMEOUT;
 }
 
 STATIC VOID EdpiDisableInterrupts(VOID)
@@ -130,6 +135,10 @@ STATIC VOID EFIAPI DpuInterruptHandler(
   UINTN DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
   UINT32 IntSts = MmioRead32(DpuBase + FixedPcdGet32(PcdDpuIntStsReg));
 
+  if ((IntSts & FixedPcdGet32(PcdDpuIntDoneBit)) != 0) {
+    mDpuFrameInFlight = FALSE;
+  }
+
   if (IntSts != 0) {
     MmioWrite32(DpuBase + FixedPcdGet32(PcdDpuIntClrReg), IntSts);
     MmioAnd32(
@@ -139,7 +148,8 @@ STATIC VOID EFIAPI DpuInterruptHandler(
 
   mHardwareInterrupt->EndOfInterrupt(mHardwareInterrupt, Source);
 
-  if ((IntSts & FixedPcdGet32(PcdDpuIntTeBit)) == 0) {
+  if (((IntSts & FixedPcdGet32(PcdDpuIntTeBit)) == 0) ||
+      mDpuFrameInFlight) {
     return;
   }
 
@@ -151,20 +161,54 @@ STATIC VOID EFIAPI DpuInterruptHandler(
 STATIC VOID EFIAPI OnExitBootServices(IN EFI_EVENT Event, IN VOID *Context)
 {
   EFI_STATUS Status;
+  EFI_TPL Tpl;
+  UINTN DpuBase = FixedPcdGet32(PcdDpuBaseAddress);
+  UINT32 IntMask = FixedPcdGet32(PcdDpuIntDoneBit) |
+      FixedPcdGet32(PcdDpuIntTeBit) | DPU_INT_ERROR_MASK;
 
   if (!mDpuInterruptRegistered) {
     return;
   }
 
-  EdpiDisableInterrupts();
+  Tpl = gBS->RaiseTPL(TPL_HIGH_LEVEL);
+  MmioAnd32(DpuBase + FixedPcdGet32(PcdDpuIntEnReg), ~IntMask);
+  Status = mHardwareInterrupt->DisableInterruptSource(
+      mHardwareInterrupt, FixedPcdGet32(PcdDpuInterruptSource));
+  if (EFI_ERROR(Status)) {
+    DEBUG((DEBUG_ERROR, "SimpleFbDxe: DPU interrupt disable failed: %r\n",
+           Status));
+    goto RestoreTpl;
+  }
+
   Status = mHardwareInterrupt->RegisterInterruptSource(
       mHardwareInterrupt, FixedPcdGet32(PcdDpuInterruptSource), NULL);
   if (EFI_ERROR(Status)) {
     DEBUG((DEBUG_ERROR, "SimpleFbDxe: DPU interrupt unregister failed: %r\n",
            Status));
+    goto RestoreTpl;
   }
 
   mDpuInterruptRegistered = FALSE;
+  Status = EdpiWaitFrameDone();
+  if (EFI_ERROR(Status)) {
+    DEBUG((DEBUG_ERROR, "SimpleFbDxe: DPU pending frame did not finish: %r\n",
+           Status));
+    goto RestoreTpl;
+  }
+
+  WriteBackInvalidateDataCacheRange(
+      (VOID *)(UINTN)mDisplay.Mode->FrameBufferBase,
+      mDisplay.Mode->FrameBufferSize);
+  EdpiTriggerFrame();
+  // The next owner uses the latched DONE bit as the idle handoff contract.
+  Status = EdpiWaitFrameDone();
+  if (EFI_ERROR(Status)) {
+    DEBUG((DEBUG_ERROR, "SimpleFbDxe: DPU final frame did not finish: %r\n",
+           Status));
+  }
+
+RestoreTpl:
+  gBS->RestoreTPL(Tpl);
 }
 
 STATIC
@@ -222,11 +266,7 @@ DisplayBlt(
 
   RETURN_STATUS Status;
   EFI_TPL       Tpl;
-  //
-  // We have to raise to TPL_NOTIFY, so we make an atomic write to the frame
-  // buffer. We would not want a timer based event (Cursor, ...) to come in
-  // while we are doing this operation.
-  //
+  // Cursor timer callbacks must not interleave framebuffer writes.
   Tpl    = gBS->RaiseTPL(TPL_NOTIFY);
   Status = FrameBufferBlt(
       mFrameBufferBltLibConfigure, BltBuffer, BltOperation, SourceX, SourceY,
@@ -251,7 +291,6 @@ SimpleFbDxeInitialize(
   EFI_STATUS Status             = EFI_SUCCESS;
   EFI_HANDLE hUEFIDisplayHandle = NULL;
 
-  /* Retrieve simple frame buffer from pre-SEC bootloader */
   DEBUG(
       (EFI_D_ERROR,
        "SimpleFbDxe: Retrieve MIPI FrameBuffer parameters from PCD\n"));
@@ -259,14 +298,12 @@ SimpleFbDxeInitialize(
   UINT32 MipiFrameBufferWidth  = FixedPcdGet32(PcdMipiFrameBufferWidth);
   UINT32 MipiFrameBufferHeight = FixedPcdGet32(PcdMipiFrameBufferHeight);
 
-  /* Sanity check */
   if (MipiFrameBufferAddr == 0 || MipiFrameBufferWidth == 0 ||
       MipiFrameBufferHeight == 0) {
     DEBUG((EFI_D_ERROR, "SimpleFbDxe: Invalid FrameBuffer parameters\n"));
     return EFI_DEVICE_ERROR;
   }
 
-  /* Prepare struct */
   if (mDisplay.Mode == NULL) {
     Status = gBS->AllocatePool(
         EfiBootServicesData, sizeof(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE),
@@ -291,7 +328,6 @@ SimpleFbDxeInitialize(
     ZeroMem(mDisplay.Mode->Info, sizeof(EFI_GRAPHICS_OUTPUT_MODE_INFORMATION));
   }
 
-  /* Set information */
   mDisplay.Mode->MaxMode       = 1;
   mDisplay.Mode->Mode          = 0;
   mDisplay.Mode->Info->Version = 0;
@@ -299,8 +335,8 @@ SimpleFbDxeInitialize(
   mDisplay.Mode->Info->HorizontalResolution = MipiFrameBufferWidth;
   mDisplay.Mode->Info->VerticalResolution   = MipiFrameBufferHeight;
 
-  /* SimpleFB runs on a8r8g8b8 (VIDEO_BPP32) for DB410c */
-  UINT32               LineLength = MipiFrameBufferWidth * VNBYTES(VIDEO_BPP32);
+  UINT32 LineLength =
+      MipiFrameBufferWidth * sizeof(EFI_GRAPHICS_OUTPUT_BLT_PIXEL);
   UINT32               FrameBufferSize    = LineLength * MipiFrameBufferHeight;
   EFI_PHYSICAL_ADDRESS FrameBufferAddress = MipiFrameBufferAddr;
 
@@ -310,9 +346,6 @@ SimpleFbDxeInitialize(
   mDisplay.Mode->FrameBufferBase = FrameBufferAddress;
   mDisplay.Mode->FrameBufferSize = FrameBufferSize;
 
-  //
-  // Create the FrameBufferBltLib configuration.
-  //
   Status = FrameBufferBltConfigure(
       (VOID *)(UINTN)mDisplay.Mode->FrameBufferBase, mDisplay.Mode->Info,
       mFrameBufferBltLibConfigure, &mFrameBufferBltLibConfigureSize);
@@ -337,9 +370,6 @@ SimpleFbDxeInitialize(
     return Status;
   }
 
-  // zhuowei: clear the screen to black
-  // UEFI standard requires this, since text is white - see
-  // OvmfPkg/QemuVideoDxe/Gop.c
   ZeroMem((void *)FrameBufferAddress, FrameBufferSize);
   WriteBackInvalidateDataCacheRange(
       (void *)FrameBufferAddress, FrameBufferSize);
@@ -376,7 +406,6 @@ SimpleFbDxeInitialize(
     }
   }
 
-  /* Register handle */
   Status = gBS->InstallMultipleProtocolInterfaces(
       &hUEFIDisplayHandle, &gEfiDevicePathProtocolGuid, &mDisplayDevicePath,
       &gEfiGraphicsOutputProtocolGuid, &mDisplay, NULL);

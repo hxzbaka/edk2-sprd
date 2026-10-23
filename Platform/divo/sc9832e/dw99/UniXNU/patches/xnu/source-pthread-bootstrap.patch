@@ -1,0 +1,35 @@
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -73,6 +73,9 @@
+ #include <mach/boolean.h>
+ #include <mach/machine.h>
+ #include <mach/thread_act.h>
++#if XNU_SOURCE_PTHREAD
++#include <mach/kmod.h>
++#endif
+ #include <mach/task_special_ports.h>
+ #include <mach/vm_param.h>
+ #include <ipc/ipc_init.h>
+@@ -584,6 +587,21 @@
+ 	bsd_early_init();
+ #endif
+ 
++#if XNU_SOURCE_PTHREAD
++	{
++		extern kern_return_t pthread_start(kmod_info_t *, void *);
++		kmod_info_t info = {
++			.info_version = KMOD_INFO_VERSION,
++			.name = "com.apple.kec.pthread",
++			.version = "330.220.2",
++		};
++		kern_return_t status = pthread_start(&info, NULL);
++		if (status != KERN_SUCCESS) {
++			panic("source libpthread registration failed: %d", status);
++		}
++	}
++#endif
++
+ #if defined(__arm64__)
+ 	ml_lockdown_init();
+ #endif

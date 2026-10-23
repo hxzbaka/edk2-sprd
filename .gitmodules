@@ -15,3 +15,9 @@
 [submodule "GPLDrivers/Library/SimpleInit"]
 	path = GPLDrivers/Library/SimpleInit
 	url = https://github.com/BigfootACA/simple-init.git
+[submodule "Common/UniXNU"]
+	path = Common/UniXNU
+	url = https://github.com/UniXNU/UniXNU.git
+[submodule "Common/DarwinBoot"]
+	path = Common/DarwinBoot
+	url = https://github.com/UniXNU/DarwinBoot.git
