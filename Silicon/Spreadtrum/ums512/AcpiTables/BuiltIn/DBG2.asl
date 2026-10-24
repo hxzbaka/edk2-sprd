@@ -30,7 +30,7 @@
 [0001]        Encoded Access Width : 03
 [0008]                     Address : 0000000070100000
 [0004]                Address Size : 00000100
-[000A]                    Namepath : "\_SB.URT1"
+[000A]                    Namepath : "\_SB.URT0"
 
 [0001]                    Revision : 01
 [0002]                      Length : 0030
@@ -39,7 +39,7 @@
 [0002]             Namepath Offset : 0026
 [0002]             OEM Data Length : 0000
 [0002]             OEM Data Offset : 0000
-[0002]                   Port Type : 8002
+[0002]                   Port Type : 8003
 [0002]                Port Subtype : 0721
 [0002]                    Reserved : 0000
 [0002]         Base Address Offset : 0016

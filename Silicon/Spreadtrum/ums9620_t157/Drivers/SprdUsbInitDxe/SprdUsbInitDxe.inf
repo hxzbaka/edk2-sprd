@@ -1,0 +1,32 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = SprdUsbInitDxe
+  FILE_GUID                      = 7F951A74-D77F-42A8-B0D4-211B3D98D102
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdUsbInitDxeEntryPoint
+
+[Sources]
+  SprdUsbInitDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Spreadtrum/ums9620_t157/ums9620.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  IoLib
+  MemoryAllocationLib
+  TimerLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gSprdAonI2cProtocolGuid
+  gSprdUsbInitProtocolGuid
+
+[Depex]
+  gSprdAonI2cProtocolGuid

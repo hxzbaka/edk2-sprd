@@ -25,3 +25,4 @@
   gRenegadePkgTokenSpaceGuid.PcdDeviceCodeName|"M20201419"
 
   gSprdTokenSpaceGuid.PcdMipiDisplayInitialized|TRUE
+  gSprdTokenSpaceGuid.PcdSprdKdNetDebug|TRUE

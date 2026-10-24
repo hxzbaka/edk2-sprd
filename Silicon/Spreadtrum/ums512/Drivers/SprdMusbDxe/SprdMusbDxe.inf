@@ -1,0 +1,41 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = SprdMusbDxe
+  FILE_GUID                      = AA5BEE15-8E76-431B-8F6E-A6247F694501
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SprdMusbDxeEntryPoint
+
+[Sources]
+  SprdMusbDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Spreadtrum/ums512/ums512.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  CacheMaintenanceLib
+  DebugLib
+  IoLib
+  MemoryAllocationLib
+  TimerLib
+  PcdLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gSprdUsbInitProtocolGuid                    ## CONSUMES
+  gSprdUsbDeviceControllerProtocolGuid        ## PRODUCES
+
+[Pcd]
+  gSprdTokenSpaceGuid.PcdSprdKdNetDebug
+
+[Guids]
+  gEfiEventExitBootServicesGuid
+
+[Depex]
+  gSprdUsbInitProtocolGuid

@@ -11,15 +11,42 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
-typedef struct { SPRD_PMIC_PROTOCOL *Pmic; EFI_EVENT Timer; EFI_EVENT ExitBoot; } CHARGER_CONTEXT;
+typedef struct {
+  SPRD_PMIC_PROTOCOL *Pmic;
+  EFI_EVENT           Timer;
+  EFI_EVENT           ExitBoot;
+  BOOLEAN             HaveVbusState;
+  BOOLEAN             LastVbusPresent;
+} CHARGER_CONTEXT;
 STATIC VOID EFIAPI ChargerTimer(IN EFI_EVENT Event, IN VOID *Context) {
-  CHARGER_CONTEXT *Charger = Context; SPRD_PMIC_BATTERY_INFO Info; EFI_STATUS Status;
+  CHARGER_CONTEXT *Charger = Context;
+  SPRD_PMIC_BATTERY_INFO Info;
+  EFI_STATUS Status;
   Status = Charger->Pmic->SetFastCharge(Charger->Pmic);
   if (EFI_ERROR(Status)) {
     DEBUG((DEBUG_WARN, "SPRD-CHARGER: watchdog refresh failed: %r\n", Status));
   }
+
   Status = Charger->Pmic->GetBatteryInfo(Charger->Pmic, &Info);
-  if (EFI_ERROR(Status)) { DEBUG((DEBUG_WARN, "SPRD-CHARGER: PMIC read failed: %r\n", Status)); return; }
+  if (EFI_ERROR(Status)) {
+    DEBUG((DEBUG_WARN, "SPRD-CHARGER: PMIC read failed: %r\n", Status));
+    return;
+  }
+
+  if (!Charger->HaveVbusState ||
+      Charger->LastVbusPresent != Info.VbusPresent) {
+    DEBUG((DEBUG_ERROR, Info.VbusPresent
+           ? "SPRD-CHARGER: charger connected\n"
+           : "SPRD-CHARGER: charger removed\n"));
+    Charger->LastVbusPresent = Info.VbusPresent;
+    Charger->HaveVbusState = TRUE;
+  }
+
+  /* Do not continuously dump battery/charger telemetry while unplugged. */
+  if (!Info.VbusPresent) {
+    return;
+  }
+
   DEBUG((DEBUG_INFO, "SPRD-CHARGER: VBAT=%umV IBAT=%dmA CAP=%u%% ICHG=%umA VBUS=%u STATUS=%u CHARGING=%u R00=0x%02x R01=0x%02x R04=0x%02x\n",
          Info.VoltageMillivolts, Info.BatteryCurrentMilliamps,
          Info.CapacityPercent, Info.ChargeCurrentMilliamps,

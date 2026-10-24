@@ -19,8 +19,8 @@
   UefiBootServicesTableLib
   IoLib
   BaseLib
-  TimerLib
   DebugLib
+  TimerLib
 
 [Protocols]
   gSprdGpioProtocolGuid

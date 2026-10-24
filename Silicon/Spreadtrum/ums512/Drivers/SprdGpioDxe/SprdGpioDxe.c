@@ -1,10 +1,10 @@
-/** @file
-  GPIO, ADI, EIC, and PMIC-EIC driver for Spreadtrum UMS512.
-
-  SPDX-License-Identifier: BSD-2-Clause
-
-  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
-**/
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 hxzbaka
+ *
+ * Gpio/Adi/PMIC_EIC driver for Spreadtrum UMS512 (SharkL5Pro)
+ */
 
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>
@@ -33,6 +33,17 @@
 
 /* PMIC EIC */
 #define PMIC_EIC_BASE       0x280
+#define PMIC_EIC_ALL_MASK   0xFFFFU
+#define PMIC_EIC_CTRL0      0x40U
+#define PMIC_EIC_CTRL4      (PMIC_EIC_CTRL0 + (4U * 4U))
+
+#define AON_APB_BASE        0x327D0000U
+#define AON_APB_EB2         0x0008U
+#define AON_APB_RTC_EB0     0x0018U
+#define AON_EIC_EB          BIT10
+#define AON_ADI_EB          BIT9
+#define AON_EIC_RTC_EB      BIT5
+#define AON_EIC_RTCDV5_EB   BIT6
 
 /* Virtual GPIO ranges */
 #define GPIO_AP_START       0x000
@@ -191,24 +202,13 @@ PmicEicRequest (
   )
 {
   UINT16 Mask;
-  UINT16 NewMask;
 
   if (Eic >= 16) {
     return EFI_INVALID_PARAMETER;
   }
-  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DMSK, &Mask)) {
-    return EFI_DEVICE_ERROR;
-  }
-  NewMask = (UINT16)(Mask | (UINT16)(1U << Eic));
-  AdiWrite (PMIC_EIC_BASE + REG_DMSK, NewMask);
-  MicroSecondDelay (1);
-
-  /* Confirm that the requested bit reached the PMIC; retry once if needed. */
-  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DMSK, &Mask) ||
-      (Mask & (UINT16)(1U << Eic)) == 0) {
-    AdiWrite (PMIC_EIC_BASE + REG_DMSK, NewMask);
-    MicroSecondDelay (1);
-  }
+  Mask = AdiRead (PMIC_EIC_BASE + REG_DMSK);
+  Mask |= (UINT16)(1U << Eic);
+  AdiWrite (PMIC_EIC_BASE + REG_DMSK, Mask);
   return EFI_SUCCESS;
 }
 
@@ -218,22 +218,14 @@ PmicEicGet (
   UINT32 Eic
   )
 {
-  UINT16 Data;
-
   if (Eic >= 16) {
     return FALSE;
   }
-  if (EFI_ERROR (PmicEicRequest (Eic))) {
-    return FALSE;
-  }
-  MicroSecondDelay (3000);
-  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DATA, &Data)) {
-    return FALSE;
-  }
-  MicroSecondDelay (1);
-  if (!AdiReadChecked (PMIC_EIC_BASE + REG_DATA, &Data)) {
-    return FALSE;
-  }
+  PmicEicRequest (Eic);
+  MicroSecondDelay (20);
+  UINT16 Data = AdiRead (PMIC_EIC_BASE + REG_DATA);
+  MicroSecondDelay (20);
+  Data = AdiRead (PMIC_EIC_BASE + REG_DATA);
   return (BOOLEAN)((Data >> Eic) & 1);
 }
 
@@ -244,6 +236,37 @@ PmicEicDirectionInput (
   )
 {
   return PmicEicRequest (Eic);
+}
+
+STATIC
+VOID
+SprdGpioInit (
+  VOID
+  )
+{
+  UINT32 Index;
+
+  /* eic init */
+  MmioOr32 (AON_APB_BASE + AON_APB_EB2, AON_ADI_EB | AON_EIC_EB);
+  MmioOr32 (AON_APB_BASE + AON_APB_RTC_EB0,
+            AON_EIC_RTC_EB | AON_EIC_RTCDV5_EB);
+
+  /* AP EIC banks: DATA/DMSK are 8-bit banks on SharkL5Pro. */
+  for (Index = 0; Index < EIC_BANK_NUM; Index++) {
+    MmioOr32 (mEicBankBase[Index] + EIC_DBNC_DMSK, 0xFFU);
+  }
+
+  /* ADIE EIC DATA mask: preserve the value, then expose all channels. */
+  {
+    UINT16 Mask = AdiRead (PMIC_EIC_BASE + REG_DMSK);
+    UINT16 NewMask = (UINT16)(Mask | PMIC_EIC_ALL_MASK);
+    if (NewMask != Mask) {
+      AdiWrite (PMIC_EIC_BASE + REG_DMSK, NewMask);
+    }
+
+    /* Match the 2 ms debounce requested for volume-up */
+    AdiWrite (PMIC_EIC_BASE + PMIC_EIC_CTRL4, 2U);
+  }
 }
 
 /* ---------- Protocol Interfaces ---------- */
@@ -330,6 +353,8 @@ SprdGpioEntryPoint (
 {
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
+
+  SprdGpioInit ();
 
   Status = gBS->InstallProtocolInterface (
                   &Handle,

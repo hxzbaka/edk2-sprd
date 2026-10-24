@@ -20,10 +20,17 @@ EFI_STATUS
   IN BOOLEAN                 Enable
   );
 
+typedef
+EFI_STATUS
+(EFIAPI *SPRD_USB_INITIALIZE)(
+  IN SPRD_USB_INIT_PROTOCOL  *This
+  );
+
 struct _SPRD_USB_INIT_PROTOCOL {
   EFI_PHYSICAL_ADDRESS    MusbBase;
   UINTN                   MusbSize;
   SPRD_USB_SET_VBUS       SetVbus;
+  SPRD_USB_INITIALIZE     InitializePeripheral;
 };
 
 #endif

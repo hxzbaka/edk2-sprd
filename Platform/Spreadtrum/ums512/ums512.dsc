@@ -23,7 +23,6 @@
 !include Silicon/Spreadtrum/SprdPkg/SprdCommonDsc.inc
 
 [PcdsFixedAtBuild.common]
-  gSprdTokenSpaceGuid.PcdSprdUsbOtgEnable|FALSE
   gArmTokenSpaceGuid.PcdSystemMemoryBase|0x80000000         # Starting address
   gArmTokenSpaceGuid.PcdSystemMemorySize|0xFDFA0000         # 4GiB profile boundary
 
@@ -64,6 +63,8 @@
   gSprdTokenSpaceGuid.PcdDebugUartPortBase|0x70100000
 
   gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp|32
+
+  gSprdTokenSpaceGuid.PcdSprdUsbOtgEnable|FALSE
 
 [LibraryClasses.common]
   # Ported from SurfaceDuoPkg

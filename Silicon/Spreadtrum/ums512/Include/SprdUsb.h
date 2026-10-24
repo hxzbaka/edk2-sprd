@@ -22,9 +22,10 @@
 #define SPRD_AON_CLK_BASE               0x32080000U
 #define SPRD_AON_HW_I2C_BASE            0x32060000U
 #define SPRD_ADI_BASE                   0x32100000U
+#define SPRD_ADI_SLAVE_BASE             (SPRD_ADI_BASE + 0x20000U)
 
 /* UMS512 maps the SC2730's 15-bit ADI slave window at ADI + 0x20000. */
-#define SPRD_SC2730_PMIC_BASE           (SPRD_ADI_BASE + 0x20000U)
+#define SPRD_SC2730_PMIC_BASE           SPRD_ADI_SLAVE_BASE
 #define SPRD_SC2730_TYPEC_BASE          (SPRD_SC2730_PMIC_BASE + 0x0380U)
 #define SPRD_SC2730_TYPEC_REG           0x0380U
 #define SPRD_SC2730_LDO_USB33_PD_REG    (SPRD_SC2730_PMIC_BASE + 0x19E8U)
@@ -112,6 +113,26 @@
 #define MUSB_FIFO_OFFSET(Ep)            (0x20U + ((Ep) * 4U))
 #define MUSB_FIFOSZ_DPB                 BIT4
 
+/* Spreadtrum MUSB DMA extension.  EP n maps to DMA channel n + 15. */
+#define MUSB_DMA_CHN_PAUSE(N)           (0x1C00U + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_CFG(N)             (0x1C04U + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_INTR(N)            (0x1C08U + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_ADDR(N)            (0x1C0CU + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_LEN(N)             (0x1C10U + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_LLIST_PTR(N)       (0x1C14U + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_BYTE_CNT(N)        (0x1C18U + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_REQ(N)             (0x1C1CU + (((N) - 1U) * 0x20U))
+#define MUSB_DMA_CHN_ENABLE             BIT0
+#define MUSB_DMA_LLIST_INT_ENABLE       BIT2
+#define MUSB_DMA_USBRX_INT_ENABLE       BIT4
+#define MUSB_DMA_CLEAR_INT_ENABLE       BIT5
+#define MUSB_DMA_FRAG_INT_CLEAR         BIT24
+#define MUSB_DMA_BLOCK_INT_CLEAR        BIT25
+#define MUSB_DMA_LLIST_INT_STATUS       BIT18
+#define MUSB_DMA_LLIST_INT_CLEAR        BIT26
+#define MUSB_DMA_START_INT_CLEAR        BIT27
+#define MUSB_DMA_USBRX_LAST_INT_CLEAR   BIT28
+
 /* MHDRC multipoint target registers, one eight-byte bank per endpoint. */
 #define MUSB_BUSCTL_OFFSET(Ep, Offset)  (0x80U + ((Ep) * 8U) + (Offset))
 #define MUSB_TXFUNCADDR                 0x00U
@@ -132,6 +153,18 @@
 #define MUSB_TXINTERVAL                 MUSB_INDEXED_REG (0x0BU)
 #define MUSB_RXTYPE                     MUSB_INDEXED_REG (0x0CU)
 #define MUSB_RXINTERVAL                 MUSB_INDEXED_REG (0x0DU)
+
+/*
+ * UMS512 U-Boot configures non-zero endpoints through the flat endpoint
+ * bank (base + 0x100 + ep * 0x10). EP0 keeps the indexed control offsets.
+ */
+#define MUSB_EP_TXMAXP(Ep)              (((Ep) == 0U) ? 0x10U : (0x100U + ((Ep) * 0x10U)))
+#define MUSB_EP_TXCSR(Ep)               (((Ep) == 0U) ? 0x12U : (0x102U + ((Ep) * 0x10U)))
+#define MUSB_EP_TXCSRH(Ep)              (((Ep) == 0U) ? 0x13U : (0x103U + ((Ep) * 0x10U)))
+#define MUSB_EP_RXMAXP(Ep)              (((Ep) == 0U) ? 0x14U : (0x104U + ((Ep) * 0x10U)))
+#define MUSB_EP_RXCSR(Ep)               (((Ep) == 0U) ? 0x16U : (0x106U + ((Ep) * 0x10U)))
+#define MUSB_EP_RXCSRH(Ep)              (((Ep) == 0U) ? 0x17U : (0x107U + ((Ep) * 0x10U)))
+#define MUSB_EP_RXCOUNT(Ep)             (((Ep) == 0U) ? 0x18U : (0x108U + ((Ep) * 0x10U)))
 
 #define MUSB_POWER_SOFTCONN             BIT6
 #define MUSB_POWER_HSENAB               BIT5
@@ -167,7 +200,14 @@
 #define MUSB_TXCSR_H_RXSTALL            BIT5
 #define MUSB_TXCSR_H_NAKTIMEOUT         BIT7
 #define MUSB_TXCSR_MODE                 BIT13
+#define MUSB_TXCSR_P_CLRDATATOG         BIT6
+#define MUSB_RXCSR_P_CLRDATATOG         BIT7
+#define MUSB_TXCSR_P_FLUSHFIFO          BIT3
+#define MUSB_RXCSR_P_FLUSHFIFO          BIT4
+#define MUSB_TXCSR_P_UNDERRUN           BIT2
+#define MUSB_TXCSR_P_WZC                (BIT7 | BIT5 | BIT2 | BIT1)
 #define MUSB_RXCSR_RXPKTRDY             BIT0
+#define MUSB_RXCSR_P_WZC                (BIT6 | BIT2 | BIT0)
 #define MUSB_RXCSR_H_ERROR              BIT2
 #define MUSB_RXCSR_H_REQPKT             BIT5
 #define MUSB_RXCSR_H_RXSTALL            BIT6

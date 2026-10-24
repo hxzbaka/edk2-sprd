@@ -2,7 +2,9 @@
   UMS512 USB2 PHY and optional OTG initialization.
 
   Charging is the default policy. OTG/host takeover is performed only when
-  PcdSprdUsbOtgEnable is TRUE.
+  PcdSprdUsbOtgEnable is TRUE and PcdSprdKdNetDebug is FALSE.
+  PcdSprdKdNetDebug keeps the USB PHY powered and restores device mode at
+  ExitBootServices for Windows KDNET.
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
 **/
@@ -47,12 +49,64 @@ STATIC BOOLEAN     mTypecStateSaved;
 STATIC BOOLEAN     mUsbHostActive;
 
 STATIC
+EFI_STATUS
+SprdUsbPhySupplyEnable (
+  VOID
+  );
+
+STATIC
+EFI_STATUS
+EFIAPI
+SprdUsbInitializePeripheral (
+  IN SPRD_USB_INIT_PROTOCOL  *This
+  )
+{
+  (VOID)This;
+  /*
+    Device mode uses the same clock, supply, and reset sequence as U-Boot,
+    but restores IDDIG and removes the host pull-downs before MUSB starts.
+  */
+  if (EFI_ERROR (SprdUsbPhySupplyEnable ())) {
+    DEBUG ((DEBUG_ERROR, "SPRD-USB: VDDUSB33 enable failed; refusing PHY bring-up\n"));
+    return EFI_DEVICE_ERROR;
+  }
+  MmioOr32 (SPRD_AON_APB_BASE + AON_APB_EB1, AON_OTG_UTMI_EB | AON_ANA_EB);
+  MmioOr32 (SPRD_AON_APB_BASE + AON_CGM_REG1, AON_CGM_OTG_REF_EN | AON_CGM_DPHY_REF_EN);
+  MmioAnd32 (SPRD_ANLG_PHY_G2_BASE + USB20_ISO_SW, ~USB20_ISO_SW_EN);
+  MmioAnd32 (SPRD_ANLG_PHY_G2_BASE + USB20_BATTER_PLL, ~(USB20_PS_PD_L | USB20_PS_PD_S));
+  MmioOr32 (SPRD_AON_APB_BASE + AON_OTG_PHY_TEST, AON_OTG_VBUS_VALID_PHYREG);
+  MmioOr32 (SPRD_ANLG_PHY_G2_BASE + USB20_UTMI_CTL1, USB20_VBUSVLDEXT | USB20_DATABUS16_8);
+  MmioOr32 (SPRD_AON_APB_BASE + AON_OTG_PHY_CTRL, AON_UTMI_WIDTH_SEL | AON_USB2_PHY_IDDIG);
+  MmioOr32 (SPRD_AON_APB_BASE + AON_APB_RST1, AON_OTG_PHY_SOFT_RST | AON_OTG_UTMI_SOFT_RST);
+  MicroSecondDelay (25000);
+  MmioAnd32 (SPRD_AON_APB_BASE + AON_APB_RST1, ~(AON_OTG_PHY_SOFT_RST | AON_OTG_UTMI_SOFT_RST));
+  MicroSecondDelay (1000);
+  MmioAnd32 (SPRD_ANLG_PHY_G2_BASE + USB20_UTMI_CTL1, ~0x200U);
+  MmioAnd32 (SPRD_ANLG_PHY_G2_BASE + USB20_REG_SEL_CFG_0,
+             ~(USB20_REG_SEL_DPPULLDOWN | USB20_REG_SEL_DMPULLDOWN));
+  MmioAnd32 (SPRD_ANLG_PHY_G2_BASE + USB20_UTMI_CTL2,
+             ~(USB20_DPPULLDOWN | USB20_DMPULLDOWN));
+  DEBUG ((DEBUG_INFO, "SPRD-USB: peripheral PHY initialized, IDDIG=device\n"));
+  return EFI_SUCCESS;
+}
+
+STATIC
+BOOLEAN
+SprdUsbKdNetDebugEnabled (
+  VOID
+  )
+{
+  return FixedPcdGetBool (PcdSprdKdNetDebug);
+}
+
+STATIC
 BOOLEAN
 SprdUsbOtgEnabled (
   VOID
   )
 {
-  return FixedPcdGetBool (PcdSprdUsbOtgEnable);
+  return FixedPcdGetBool (PcdSprdUsbOtgEnable) &&
+         !SprdUsbKdNetDebugEnabled ();
 }
 
 STATIC
@@ -75,7 +129,14 @@ SprdAdiRead16 (
   UINTN   Retry;
   UINT32  Value;
 
-  MmioWrite32 (SPRD_ADI_BASE + SPRD_ADI_RD_CMD, Register);
+  /*
+    ADI read commands take the absolute slave-window address.  Passing the
+    bare PMIC offset reads a different ADI target and can leave VDDUSB33
+    powered down while the USB PHY appears otherwise initialized.
+  */
+  MmioWrite32 (SPRD_ADI_BASE + SPRD_ADI_RD_CMD, SPRD_ADI_SLAVE_BASE + Register);
+  MemoryFence ();
+  MicroSecondDelay (1);
   for (Retry = 0; Retry < 2000; Retry++) {
     Value = MmioRead32 (SPRD_ADI_BASE + SPRD_ADI_RD_DATA);
     if ((Value & SPRD_ADI_RD_BUSY) == 0) {
@@ -262,12 +323,14 @@ SprdFan54015KeepAlive (
   }
 
   /*
-    This is the same REG01 value programming as fan54015_charger_enable_otg():
-    enable OPA/boost and clear HZ mode.  Reapply it if the charger reset it.
+    Keep FAN54015 in sink/charging mode while UEFI is running.  Setting
+    OTG_ENABLE here selects boost/source mode and prevents normal battery
+    charging; only clear HZ (shutdown) and leave the charge-enable bit
+    untouched.  The charger DXE owns the current/input-limit programming.
   */
-  DesiredControl1 = (UINT8)((Control1 | FAN54015_OTG_ENABLE) & ~FAN54015_HZ_MODE);
+  DesiredControl1 = (UINT8)(Control1 & (UINT8)~(FAN54015_OTG_ENABLE | FAN54015_HZ_MODE));
   if (DesiredControl1 != Control1) {
-    DEBUG ((DEBUG_WARN, "SPRD-USB: restoring FAN54015 OTG/HZ state (REG01=0x%02x)\n", Control1));
+    DEBUG ((DEBUG_WARN, "SPRD-USB: restoring FAN54015 charge/HZ state (REG01=0x%02x)\n", Control1));
     Control1 = DesiredControl1;
     Status = SprdFan54015WriteRegister (I2c, FAN54015_REG_CONTROL1, Control1);
     if (EFI_ERROR (Status)) {
@@ -347,13 +410,17 @@ SprdUsbSetVbus (
     return Status;
   }
 
-  /* Match Linux: REG01 OPA/OTG boost on, HZ mode off. */
+  /*
+   * This platform uses FAN54015 as a sink charger during UEFI.  Do not set
+   * OPA/OTG here: that selects boost/source mode and prevents battery
+   * charging.  Enabling VBUS only clears HZ and leaves CE/current limits
+   * under the charger driver's control.
+   */
   Data[0] = FAN54015_REG_CONTROL1;
   if (Enable) {
-    Data[1] |= FAN54015_OTG_ENABLE;
-    Data[1] &= (UINT8)~FAN54015_HZ_MODE;
+    Data[1] &= (UINT8)~(FAN54015_OTG_ENABLE | FAN54015_HZ_MODE);
   } else {
-    Data[1] &= (UINT8)~FAN54015_OTG_ENABLE;
+    Data[1] |= FAN54015_OTG_ENABLE;
   }
   Packet->OperationCount = 1;
   Packet->Operation[0].Flags         = 0;
@@ -368,7 +435,7 @@ SprdUsbSetVbus (
 }
 
 STATIC
-VOID
+EFI_STATUS
 SprdUsbPhySupplyEnable (
   VOID
   )
@@ -381,16 +448,19 @@ SprdUsbPhySupplyEnable (
   Voltage   = SprdAdiRead16 (SPRD_SC2730_LDO_USB33_VOL_OFFSET);
   if ((PowerDown == MAX_UINT16) || (Voltage == MAX_UINT16)) {
     DEBUG ((DEBUG_ERROR, "SPRD-USB: cannot read SC2730 VDDUSB33 registers\n"));
-    return;
+    return EFI_DEVICE_ERROR;
   }
 
   /* 3.3 V must be stable before releasing the USB2 PHY isolation/reset. */
   Voltage = (UINT16)((Voltage & ~SPRD_SC2730_LDO_USB33_VOL_MASK) |
                      SPRD_SC2730_LDO_USB33_3V3);
+  /* DTS names this rail vddusb33; USB2 PHY requires it before reset release. */
   MmioWrite32 (SPRD_SC2730_LDO_USB33_VOL_REG, Voltage);
+  MemoryFence ();
   MmioWrite32 (SPRD_SC2730_LDO_USB33_PD_REG,
     (UINT16)(PowerDown & ~SPRD_SC2730_LDO_USB33_PD));
-  MicroSecondDelay (1000);
+  MemoryFence ();
+  MicroSecondDelay (5000);
 
   PowerDown = SprdAdiRead16 (SPRD_SC2730_LDO_USB33_PD_OFFSET);
   Voltage   = SprdAdiRead16 (SPRD_SC2730_LDO_USB33_VOL_OFFSET);
@@ -399,6 +469,12 @@ SprdUsbPhySupplyEnable (
     PowerDown, Voltage,
     (PowerDown != MAX_UINT16) &&
     ((PowerDown & SPRD_SC2730_LDO_USB33_PD) == 0)));
+  if ((PowerDown == MAX_UINT16) ||
+      ((PowerDown & SPRD_SC2730_LDO_USB33_PD) != 0)) {
+    DEBUG ((DEBUG_ERROR, "SPRD-USB: SC2730 VDDUSB33 remains powered down\n"));
+    return EFI_DEVICE_ERROR;
+  }
+  return EFI_SUCCESS;
 }
 
 STATIC
@@ -533,6 +609,30 @@ SprdMusbRestoreDeviceMode (
   UINTN  Aon;
   UINTN  Phy;
   UINT8  Value;
+  UINT16 Csr;
+  UINT8  Ep;
+
+  /* Clear UEFI gadget state before Windows takes ownership. */
+  Base = SPRD_MUSB_BASE;
+  MmioWrite8 (Base + MUSB_INDEX, 0);
+  MmioWrite16 (Base + MUSB_EP_TXCSR (0), MUSB_CSR0_FLUSHFIFO);
+  MmioWrite16 (Base + MUSB_EP_TXCSR (0), 0);
+  for (Ep = 5; Ep <= 6; Ep++) {
+    if (Ep == 5) {
+      Csr = MmioRead16 (Base + MUSB_EP_TXCSR (Ep));
+      Csr &= (UINT16)~(MUSB_TXCSR_P_WZC | MUSB_TXCSR_MODE);
+      MmioWrite16 (Base + MUSB_EP_TXCSR (Ep),
+        Csr | MUSB_TXCSR_P_FLUSHFIFO | MUSB_TXCSR_P_CLRDATATOG);
+      MmioWrite16 (Base + MUSB_EP_TXCSR (Ep), 0);
+    } else {
+      Csr = MmioRead16 (Base + MUSB_EP_RXCSR (Ep));
+      Csr &= (UINT16)~MUSB_RXCSR_P_WZC;
+      MmioWrite16 (Base + MUSB_EP_RXCSR (Ep),
+        Csr | MUSB_RXCSR_P_FLUSHFIFO | MUSB_RXCSR_P_CLRDATATOG);
+      MmioWrite16 (Base + MUSB_EP_RXCSR (Ep), 0);
+    }
+  }
+  MmioWrite8 (Base + MUSB_INDEX, 0);
 
   Base = SPRD_MUSB_BASE;
   Aon = SPRD_AON_APB_BASE;
@@ -592,6 +692,7 @@ SprdUsbExitBootServices (
 {
   SPRD_USB_INIT_PROTOCOL  *Init;
   EFI_STATUS              Status;
+  BOOLEAN                 KdNetDebug;
 
   (VOID)Event;
   Init = (SPRD_USB_INIT_PROTOCOL *)Context;
@@ -600,6 +701,27 @@ SprdUsbExitBootServices (
     (VOID)gBS->SetTimer (mFan54015WatchdogEvent, TimerCancel, 0);
     (VOID)gBS->CloseEvent (mFan54015WatchdogEvent);
     mFan54015WatchdogEvent = NULL;
+  }
+
+  KdNetDebug = SprdUsbKdNetDebugEnabled ();
+  if (KdNetDebug) {
+    /*
+      Windows KDNET takes over the MUSB core after EBS. Do not touch the
+      already-working peripheral MUSB state here: SprdMusbDxe has its own
+      ExitBootServices callback and Windows must see one clean owner during
+      the handoff.  Rewriting POWER/DEVCTL or resetting the PHY at this
+      point creates a second disconnect immediately before usbnet starts.
+      Only keep the USB rail alive.
+    */
+    Status = SprdUsbPhySupplyEnable ();
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR,
+        "SPRD-USB: KDNET EBS VDDUSB33 keep-alive failed: %r\n", Status));
+    } else {
+      DEBUG ((DEBUG_INFO,
+        "SPRD-USB: KDNET EBS handoff ready: MUSB state retained, VDDUSB33 enabled\n"));
+    }
+    return;
   }
 
   /* Only an explicitly enabled OTG session owns VBUS and MUSB state. */
@@ -633,11 +755,15 @@ SprdUsbInitDxeEntryPoint (
   }
 
   DEBUG ((DEBUG_INFO, "SPRD-USB: starting USB initialization DXE\n"));
-  DEBUG ((DEBUG_INFO, "SPRD-USB: OTG PCD=%u (default 0: charging mode)\n",
+  DEBUG ((DEBUG_INFO,
+    "SPRD-USB: OTG PCD=%u KDNET PCD=%u OTG effective=%u\n",
+    FixedPcdGetBool (PcdSprdUsbOtgEnable),
+    SprdUsbKdNetDebugEnabled (),
     SprdUsbOtgEnabled ()));
   Init->MusbBase = SPRD_MUSB_BASE;
   Init->MusbSize = SPRD_MUSB_SIZE;
   Init->SetVbus  = SprdUsbSetVbus;
+  Init->InitializePeripheral = SprdUsbInitializePeripheral;
   Handle = NULL;
   Status = gBS->InstallProtocolInterface (&Handle, &gSprdUsbInitProtocolGuid,
                   EFI_NATIVE_INTERFACE, Init);
@@ -666,7 +792,13 @@ SprdUsbInitDxeEntryPoint (
     its data switch even if FAN54015 is already supplying 5 V on VBUS.
   */
   if (!SprdUsbOtgEnabled ()) {
-    DEBUG ((DEBUG_INFO, "SPRD-USB: OTG disabled; leaving VBUS to charger and skipping host session\n"));
+    if (SprdUsbKdNetDebugEnabled ()) {
+      DEBUG ((DEBUG_INFO,
+        "SPRD-USB: KDNET mode overrides OTG; retaining USB device role\n"));
+    } else {
+      DEBUG ((DEBUG_INFO,
+        "SPRD-USB: OTG disabled; leaving VBUS to charger and skipping host session\n"));
+    }
     return EFI_SUCCESS;
   }
 

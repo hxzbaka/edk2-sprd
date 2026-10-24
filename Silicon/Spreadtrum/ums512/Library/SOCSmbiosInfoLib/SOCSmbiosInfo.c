@@ -60,11 +60,11 @@ SMBIOS_TABLE_TYPE4 mProcessorInfoType4_a55 = {
     0, 0, 0
 };
 
-CHAR8 mCpuName[128] = "Unisoc T610 (UMS512)";
+CHAR8 mCpuName[128] = "UNISOC Tiger T610";
 CHAR8 *mProcessorInfoType4Strings[] = {
     "BGA",
     "Spreadtrum",
-    "Unisoc T610 (UMS512)",
+    "UNISOC Tiger T610",
     NULL
 };
 

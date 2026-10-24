@@ -143,9 +143,9 @@ AdmaSetHostCtrl (VOID)
   MmioWrite16 (SDHCI_BASE + SDHCI_HOST_CONTROL2, HostCtrl2);
 }
 
-// Leave the controller quiescent before Windows takes ownership.  This is a
-// host reset only: the eMMC card remains selected and initialized, while no
-// outstanding DMA or interrupt can survive the DXE-to-OS handoff.
+// Return the SDHCI host to a clean reset state before Windows takes ownership.
+// The eMMC card itself is not hardware-reset; sprdsdhc.sys will enumerate and
+// configure the card again after ExitBootServices.
 STATIC
 VOID
 EFIAPI
@@ -157,18 +157,11 @@ SprdEmmcExitBootServices (
   (VOID)Event;
   (VOID)Context;
 
-  DEBUG ((DEBUG_INFO, "SprdEmmc: ESB reset mmc config\n"));
+  DEBUG ((DEBUG_INFO, "SprdEmmc: EBS quiesce SDHCI interrupts\n"));
 
-  MmioWrite16 (SDHCI_BASE + SDHCI_TRANSFER_MODE, 0);
   MmioWrite32 (SDHCI_BASE + SDHCI_SIGNAL_ENABLE, 0);
   MmioWrite32 (SDHCI_BASE + SDHCI_INT_ENABLE, 0);
   MmioWrite32 (SDHCI_BASE + SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
-  MmioWrite32 (SDHCI_BASE + SDHCI_ADMA_ADDRESS, 0);
-  MmioWrite32 (SDHCI_BASE + SDHCI_ADMA_ADDRESS_HI, 0);
-
-  // Reset only the host command/data engines.  Do not assert the card reset
-  // bit, otherwise Windows would inherit an uninitialized eMMC card.
-  (VOID)SprdSdhciReset (SDHCI_RESET_CMD | SDHCI_RESET_DATA);
 }
 
 STATIC VOID
