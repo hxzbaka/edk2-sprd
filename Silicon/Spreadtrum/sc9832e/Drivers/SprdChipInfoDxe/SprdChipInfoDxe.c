@@ -1,8 +1,11 @@
 /** @file
+  SprdChipInfoDxe.c
+
   UEFI Chip Info driver for Spreadtrum SC9832e.
 
-  Copyright (c) 2026, hxzbaka. All rights reserved.
-  SPDX-License-Identifier: BSD-2-Clause-Patent
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

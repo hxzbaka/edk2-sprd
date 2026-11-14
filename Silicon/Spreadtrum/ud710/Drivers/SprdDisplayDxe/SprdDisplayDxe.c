@@ -1,19 +1,18 @@
-/******************************************
- * @file
- * Reconfigures ROC1 DPU R3P0 Layer0 from RGB565 (left by U-Boot logo)
- * to ARGB8888, and DSI packet format from RGB565 to RGB888
- *
- * DPU          : sprd,r3p0
- * SoC/board    : ROC1 / UD710_1H10
- * DPU base     : 0x20300000
- * DSI base     : 0x20400000
- * Mode     : Video
- *
- * Reference    : drivers/video/sprd/dispc/dpu_r3p0.c
- *              : drivers/video/sprd/dsi/core/dwc_mipi_dsi_host.c
- *
- * Copyright (c) 2026 hxzbaka
- ******************************************/
+/** @file
+  SprdDisplayDxe.c
+
+  Reconfigures ROC1 DPU R3P0 Layer0 from RGB565 (left by U-Boot logo)
+  to ARGB8888, and DSI packet format from RGB565 to RGB888
+  DPU          : sprd,r3p0
+  SoC/board    : ROC1 / UD710_1H10
+  DPU base     : 0x20300000
+  DSI base     : 0x20400000
+  Mode     : Video
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
 
 #include <Library/BaseLib.h>
 #include <Library/DebugLib.h>

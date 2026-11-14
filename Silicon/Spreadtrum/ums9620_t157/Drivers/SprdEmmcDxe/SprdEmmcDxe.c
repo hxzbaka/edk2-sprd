@@ -1,10 +1,13 @@
-/**
-@file
-Sprd Emmc Drivers for UEFI
-SDC->sprd,sdhc-r10
+/** @file
+  SprdEmmcDxe.c
 
-Copyright (c) 2026 kanadenadi
-hxzbaka
+  Sprd Emmc Drivers for UEFI
+  SDC->sprd,sdhc-r10
+  hxzbaka
+
+  Copyright (c) 2026, kanadenadi. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Library/CacheMaintenanceLib.h>

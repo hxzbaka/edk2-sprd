@@ -1,11 +1,16 @@
 /** @file
+  SprdMusbDxe.c
+
   Spreadtrum MUSB USB Host Controller Driver for UMS9620 (Y60)
-  
   Transplanted from Linux kernel phy-sprd-qogirn6pro.c and musb_sprd.c
   Addresses verified against y60.dts:
-    - MUSB: 0x64A00000 (usb@a00000, reg 0xa00000)
-    - ANLG_PHY_G0L: 0x64300000 (syscon@64300000, anlg_phy_g0l_regs)
-    - AON_APB: 0x64900000 (syscon@64900000, phandle 0x02)
+  - MUSB: 0x64A00000 (usb@a00000, reg 0xa00000)
+  - ANLG_PHY_G0L: 0x64300000 (syscon@64300000, anlg_phy_g0l_regs)
+  - AON_APB: 0x64900000 (syscon@64900000, phandle 0x02)
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <PiDxe.h>

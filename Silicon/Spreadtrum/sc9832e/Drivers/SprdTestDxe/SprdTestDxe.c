@@ -1,8 +1,13 @@
 /** @file
-  Diagnostic driver to test ARM Generic Timer and GIC.
+  SprdTestDxe.c
 
+  Diagnostic driver to test ARM Generic Timer and GIC.
   This driver repeatedly checks the system counter, reads GIC registers,
   and installs a periodic timer event to verify if interrupts are working.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

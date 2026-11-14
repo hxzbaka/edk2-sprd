@@ -1,7 +1,11 @@
 /** @file
+  SprdUms512TcmPlatform.c
+
   UMS512 touch-controller platform transport implementation.
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

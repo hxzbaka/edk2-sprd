@@ -1,7 +1,11 @@
 /** @file
+  SprdClockDxe.c
+
   UMS512 gate-clock implementation of EFI_CLOCK_PROTOCOL.
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

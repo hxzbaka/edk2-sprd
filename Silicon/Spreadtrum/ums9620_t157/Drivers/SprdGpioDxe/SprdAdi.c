@@ -1,3 +1,11 @@
+/** @file
+  SprdAdi.c
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
+
 #include "SprdAdi.h"
 #include <Library/IoLib.h>
 

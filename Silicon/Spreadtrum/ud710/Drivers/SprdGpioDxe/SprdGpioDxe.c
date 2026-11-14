@@ -1,10 +1,12 @@
-/*-
- * SPDX-License-Identifier: BSD-2-Clause
- *
- * Copyright (c) 2026 hxzbaka
- *
- * Gpio/Adi/EIC/PMIC driver for Spreadtrum UD710 (roc1)
- */
+/** @file
+  SprdGpioDxe.c
+
+  Gpio/Adi/EIC/PMIC driver for Spreadtrum UD710 (roc1)
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
 
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>

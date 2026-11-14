@@ -1,9 +1,14 @@
 /** @file
-  UMS512/SharkL5Pro AON hardware I2C DXE driver.
+  SprdI2CDxe.c
 
+  UMS512/SharkL5Pro AON hardware I2C DXE driver.
   t610.dts assigns charger@6a to this controller.  The ARM hardware channel
   supports a two-byte register write, or a one-byte register address followed
   by a one/two-byte read.  Those are the transactions used by FAN54015.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <SprdUsb.h>

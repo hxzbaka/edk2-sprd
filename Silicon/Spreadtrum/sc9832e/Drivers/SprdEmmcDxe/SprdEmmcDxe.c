@@ -1,10 +1,12 @@
-/**
-@file
-Sprd Emmc Drivers for EDK2
-SDC->sprd,sdhc-r10
+/** @file
+  SprdEmmcDxe.c
 
-SPDX-License-Identifier: BSD-2-Clause
-Copyright (c) 2026 kanadenadi
+  Sprd Emmc Drivers for EDK2
+  SDC->sprd,sdhc-r10
+
+  Copyright (c) 2026, kanadenadi. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Library/CacheMaintenanceLib.h>

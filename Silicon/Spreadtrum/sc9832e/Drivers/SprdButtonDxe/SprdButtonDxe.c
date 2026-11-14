@@ -1,11 +1,13 @@
-/*-
- * SPDX-License-Identifier: BSD-2-Clause
- *
- * Copyright (c) 2026 hxzbaka
- *
- * Physical button driver for Spreadtrum, providing SimpleTextIn via
- * hardware volume up/down and power keys.
- */
+/** @file
+  SprdButtonDxe.c
+
+  Physical button driver for Spreadtrum, providing SimpleTextIn via
+  hardware volume up/down and power keys.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
 
 #include <Uefi.h>
 #include <Protocol/SimpleTextIn.h>

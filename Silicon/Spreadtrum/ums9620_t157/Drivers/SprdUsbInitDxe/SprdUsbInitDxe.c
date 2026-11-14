@@ -1,9 +1,14 @@
 /** @file
-  UMS512 USB2 PHY and OTG host initialisation.
+  SprdUsbInitDxe.c
 
+  UMS512 USB2 PHY and OTG host initialisation.
   U-Boot leaves this controller in gadget mode.  This driver deliberately
   disconnects gadget, resets the PHY, selects an A-device, and starts a new
   host session before MUSB is exposed to the UEFI USB bus driver.
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <SprdUsb.h>

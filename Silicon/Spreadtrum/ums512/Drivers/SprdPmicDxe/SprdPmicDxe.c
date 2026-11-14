@@ -1,7 +1,11 @@
 /** @file
+  SprdPmicDxe.c
+
   Spreadtrum UMS512 PMIC protocol DXE driver.
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

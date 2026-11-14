@@ -1,10 +1,11 @@
-### @file
-# SC9832e Chip Information DXE Driver.
+# @file 
+#  SC9832e Chip Information DXE Driver.
+#  Implements EFI_CHIPINFO_PROTOCOL for the Spreadtrum SC9832e platform.
 #
-# Implements EFI_CHIPINFO_PROTOCOL for the Spreadtrum SC9832e platform.
-# Copyright (c) 2026, hxzbaka. All rights reserved.
-# SPDX-License-Identifier: BSD-2-Clause-Patent
-##
+#  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: GPL-2.0-only
+#
 
 [Defines]
   INF_VERSION                    = 0x00010005

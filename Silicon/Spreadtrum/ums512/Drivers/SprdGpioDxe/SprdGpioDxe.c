@@ -1,10 +1,12 @@
-/*-
- * SPDX-License-Identifier: BSD-2-Clause
- *
- * Copyright (c) 2026 hxzbaka
- *
- * Gpio/Adi/PMIC_EIC driver for Spreadtrum UMS512 (SharkL5Pro)
- */
+/** @file
+  SprdGpioDxe.c
+
+  Gpio/Adi/PMIC_EIC driver for Spreadtrum UMS512 (SharkL5Pro)
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
 
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>

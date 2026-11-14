@@ -1,11 +1,12 @@
 /** @file
+  SprdEmmcDxe.h
+
   Header for SPRD eMMC Block I/O Driver
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
   Copyright (c) 2026, atlas4381. All rights reserved.<BR>
 
-  SPDX-License-Identifier: BSD-2-Clause-Patent
-
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #ifndef _SPRD_EMMC_DXE_H_

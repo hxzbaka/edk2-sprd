@@ -1,3 +1,11 @@
+/** @file
+  SprdEmmcDxe.h
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
+
 #ifndef _SPRD_EMMC_DXE_H_
 #define _SPRD_EMMC_DXE_H_
 

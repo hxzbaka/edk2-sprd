@@ -1,10 +1,13 @@
-/*-
- * SPDX-License-Identifier: BSD-2-Clause
- * Copyright (c) 2026 hxzbaka
- *
- * GPIO / EIC (Debounce, Latch, Async, Sync) / PMIC driver
- * for Spreadtrum UMS512 (SharkL5 Pro)
- */
+/** @file
+  SprdGpioDxe.c
+
+  GPIO / EIC (Debounce, Latch, Async, Sync) / PMIC driver
+  for Spreadtrum UMS512 (SharkL5 Pro)
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
 
 #include <Uefi.h>
 #include <Library/UefiBootServicesTableLib.h>

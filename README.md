@@ -29,4 +29,4 @@ This project is based on [edk2-msm](https://github.com/edk2-porting/edk2-msm)
 - All the developers and members of [Renegade Project](https://github.com/edk2-porting/) for offering efforts, equipments, valuable documents and more
 
 ## License
-All code except drivers in GPLDriver directory are licensed under BSD 2-Clause. GPL Drivers are licensed under GPLv2 license.
+Except for the GPLDriver directory and Sprd-specific drivers, all code is licensed under the BSD 2-Clause license. The GPL drivers are licensed under the GPLv2 license.

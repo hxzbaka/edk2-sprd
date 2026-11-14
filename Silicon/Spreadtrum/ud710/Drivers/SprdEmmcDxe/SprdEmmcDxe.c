@@ -1,11 +1,14 @@
-/**
-@file
-Sprd Emmc Drivers for UEFI
-SDC->sprd,sdhc-r11
-roc1 ud710
+/** @file
+  SprdEmmcDxe.c
 
-Copyright (c) 2026 kanadenadi
-Copyright (c) 2026 hxzbaka
+  Sprd Emmc Drivers for UEFI
+  SDC->sprd,sdhc-r11
+  roc1 ud710
+
+  Copyright (c) 2026, kanadenadi. All rights reserved.<BR>
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Library/CacheMaintenanceLib.h>

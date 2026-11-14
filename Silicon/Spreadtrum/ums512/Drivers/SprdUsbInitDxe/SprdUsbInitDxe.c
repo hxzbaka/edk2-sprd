@@ -1,12 +1,15 @@
 /** @file
-  UMS512 USB2 PHY and optional OTG initialization.
+  SprdUsbInitDxe.c
 
+  UMS512 USB2 PHY and optional OTG initialization.
   Charging is the default policy. OTG/host takeover is performed only when
   PcdSprdUsbOtgEnable is TRUE and PcdSprdKdNetDebug is FALSE.
   PcdSprdKdNetDebug keeps the USB PHY powered and restores device mode at
   ExitBootServices for Windows KDNET.
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <SprdUsb.h>

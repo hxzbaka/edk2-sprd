@@ -1,19 +1,18 @@
-/******************************************
- * @file
- * Keeps DPU R4P0 Layer0 in RGB565 format
- * to match the RGB565 framebuffer and 16-bit DSI packet format
- *
- * DPU          : sprd,r4p0
- * DSI          : SharkL5Pro
- * DPU base     : 0x20300000
- * DSI base     : 0x20400000
- * Mode     : Video
- *
- * Reference    : drivers/video/sprd/dispc/dpu_r4p0.c
- *              : drivers/video/sprd/dsi/core/dwc_mipi_dsi_host.c
- *
- * Copyright (c) 2026 hxzbaka
- ******************************************/
+/** @file
+  SprdDisplayDxe.c
+
+  Keeps DPU R4P0 Layer0 in RGB565 format
+  to match the RGB565 framebuffer and 16-bit DSI packet format
+  DPU          : sprd,r4p0
+  DSI          : SharkL5Pro
+  DPU base     : 0x20300000
+  DSI base     : 0x20400000
+  Mode     : Video
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
 
 #include <Library/BaseLib.h>
 #include <Library/DebugLib.h>

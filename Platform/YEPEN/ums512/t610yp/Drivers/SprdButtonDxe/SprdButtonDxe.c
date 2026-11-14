@@ -1,11 +1,12 @@
 /** @file
-  Physical button driver for Spreadtrum UMS512.
+  SprdButtonDxe.c
 
+  Physical button driver for Spreadtrum UMS512.
   Provides SimpleTextIn through the hardware volume and power keys.
 
-  SPDX-License-Identifier: BSD-2-Clause
-
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

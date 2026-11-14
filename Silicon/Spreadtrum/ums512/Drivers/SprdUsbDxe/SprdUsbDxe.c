@@ -1,10 +1,13 @@
 /** @file
-  Requests normal UEFI USB bus binding after DXE USB drivers are present.
+  SprdUsbDxe.c
 
+  Requests normal UEFI USB bus binding after DXE USB drivers are present.
   This driver does not parse HID reports. Once MUSB publishes
   EFI_USB2_HC_PROTOCOL, UsbBusDxe performs device enumeration.
 
   Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
 **/
 
 #include <Uefi.h>

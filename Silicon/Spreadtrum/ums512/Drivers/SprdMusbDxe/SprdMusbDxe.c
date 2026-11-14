@@ -1,3 +1,11 @@
+/** @file
+  SprdMusbDxe.c
+
+  Copyright (c) 2026, hxzbaka. All rights reserved.<BR>
+
+  SPDX-License-Identifier: GPL-2.0-only
+**/
+
 #include <Uefi.h>
 #include <Protocol/SprdUsbDeviceController.h>
 #include <Protocol/SprdUsbInit.h>
