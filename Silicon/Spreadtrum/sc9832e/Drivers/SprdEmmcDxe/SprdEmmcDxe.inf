@@ -21,6 +21,7 @@
 [Packages]
   MdePkg/MdePkg.dec
   MdeModulePkg/MdeModulePkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
 
 [LibraryClasses]
   UefiDriverEntryPoint
@@ -28,6 +29,7 @@
   MemoryAllocationLib
   BaseMemoryLib
   IoLib
+  PcdLib
   TimerLib
   DebugLib
   CacheMaintenanceLib
@@ -35,6 +37,11 @@
 [Protocols]
   gEfiBlockIoProtocolGuid
   gEfiDevicePathProtocolGuid
+
+[FixedPcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSdMmcPciHostControllerMmioBase
+  gSprdTokenSpaceGuid.PcdApClkBaseAddress
+  gSprdTokenSpaceGuid.PcdApAhbBaseAddress
 
 [Depex]
   TRUE

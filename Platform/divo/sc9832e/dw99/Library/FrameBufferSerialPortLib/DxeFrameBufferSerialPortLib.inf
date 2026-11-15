@@ -1,0 +1,43 @@
+## @file
+#
+# Copyright (c) DuoWoA authors. All rights reserved.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+##
+[Defines]
+  INF_VERSION    = 0x00010005
+  FILE_GUID      = D01D8523-F68C-43F6-8446-04449DD44331
+  BASE_NAME      = Dw99DxeFrameBufferSerialPortLib
+  MODULE_TYPE    = BASE
+  VERSION_STRING = 1.1
+  LIBRARY_CLASS  = SerialPortLib|DXE_CORE DXE_DRIVER DXE_RUNTIME_DRIVER UEFI_APPLICATION UEFI_DRIVER
+
+[Sources.common]
+  FrameBufferSerialPortLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+
+[LibraryClasses]
+  ArmLib
+  BaseMemoryLib
+  PcdLib
+  IoLib
+  CompilerIntrinsicsLib
+  CacheMaintenanceLib
+  TimerLib
+
+[FixedPcd]
+  gSprdTokenSpaceGuid.PcdDpuBaseAddress
+
+[Pcd]
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
+  gSprdTokenSpaceGuid.PcdMipiFrameBufferDelay
+
+[BuildOptions]
+  GCC:*_*_AARCH64_CC_FLAGS = -DFBCON_DRIVER_MANAGED_REFRESH=1

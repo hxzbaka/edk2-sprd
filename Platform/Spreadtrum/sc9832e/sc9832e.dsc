@@ -23,6 +23,14 @@
 !include Silicon/Spreadtrum/SprdPkg/SprdCommonDsc.inc
 
 [PcdsFixedAtBuild.common]
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank0BaseAddress|0x40210000
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank1BaseAddress|0x40370000
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank2BaseAddress|0x402C0000
+  gsc9832ePkgTokenSpaceGuid.PcdAdiBaseAddress|0x40380000
+  gSprdTokenSpaceGuid.PcdApClkBaseAddress|0x21500000
+  gSprdTokenSpaceGuid.PcdApAhbBaseAddress|0x20E00000
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSdMmcPciHostControllerMmioBase|0x20600000
+
   gArmTokenSpaceGuid.PcdSystemMemoryBase|0x80000000         # Starting address
   gArmTokenSpaceGuid.PcdSystemMemorySize|0xFDFA0000
   gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x2E000000
@@ -43,8 +51,6 @@
   gEmbeddedTokenSpaceGuid.PcdPrePiCpuIoSize|44
 
   gSprdTokenSpaceGuid.PcdUefiMemPoolBase|0xBFEF0000         # DXE Heap base address
-  # PcdUefiMemPoolSize set conditionally above
-  # RT DPU scanout backing store for 480x960 BGRA8888.
   gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress|0xBEEF0000
 
   gArmPlatformTokenSpaceGuid.PcdCoreCount|4
@@ -72,4 +78,4 @@
   SOCSmbiosInfoLib|Silicon/Spreadtrum/sc9832e/Library/SOCSmbiosInfoLib/SOCSmbiosInfoLib.inf
 
 [Components.common]
-!include Platform/Spreadtrum/sc9832e/dxe.dsc.inc  
+!include Platform/Spreadtrum/sc9832e/dxe.dsc.inc

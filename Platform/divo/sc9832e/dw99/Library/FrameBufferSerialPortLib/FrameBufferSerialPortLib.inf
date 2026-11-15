@@ -23,9 +23,9 @@
 
 [LibraryClasses]
   ArmLib
+  BaseMemoryLib
   PcdLib
   IoLib
-  HobLib
   CompilerIntrinsicsLib
   CacheMaintenanceLib
   TimerLib
@@ -41,5 +41,4 @@
   gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
   gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth
   gSprdTokenSpaceGuid.PcdMipiFrameBufferHeight
-  gSprdTokenSpaceGuid.PcdMipiFrameBufferPixelBpp
   gSprdTokenSpaceGuid.PcdMipiFrameBufferDelay

@@ -4,17 +4,11 @@
 #include <Protocol/Smbios.h>
 #include <Library/SOCSmbiosInfoLib.h>
 
-/***********************************************************************
-        SMBIOS data definition  TYPE4  Processor Information
-************************************************************************/
 SMBIOS_TABLE_TYPE4 mProcessorInfoType4_a53 = {
     {EFI_SMBIOS_TYPE_PROCESSOR_INFORMATION, sizeof(SMBIOS_TABLE_TYPE4), 0},
     1,                // Socket String
-    CentralProcessor, // ProcessorType;          ///< The enumeration value from
-                      // PROCESSOR_TYPE_DATA.
-    ProcessorFamilyIndicatorFamily2, // ProcessorFamily;        ///< The
-                                     // enumeration value from
-                                     // PROCESSOR_FAMILY2_DATA.
+    CentralProcessor, // ProcessorType
+    ProcessorFamilyIndicatorFamily2, // ProcessorFamily
     2,                               // ProcessorManufacture String;
     {                                // ProcessorId;
      {0x00, 0x00, 0x00, 0x00},
@@ -22,20 +16,18 @@ SMBIOS_TABLE_TYPE4 mProcessorInfoType4_a53 = {
     3, // ProcessorVersion String;
     {
         // Voltage;
-        0, // ProcessorVoltageCapability5V        :1;
-        0, // ProcessorVoltageCapability3_3V      :1;
-        0, // ProcessorVoltageCapability2_9V      :1;
-        0, // ProcessorVoltageCapabilityReserved  :1; ///< Bit 3, must be zero.
-        0, // ProcessorVoltageReserved            :3; ///< Bits 4-6, must be
-           // zero.
-        1  // ProcessorVoltageIndicateLegacy      :1;
+        0, // ProcessorVoltageCapability5V
+        0, // ProcessorVoltageCapability3_3V
+        0, // ProcessorVoltageCapability2_9V
+        0, // ProcessorVoltageCapabilityReserved
+        0, // ProcessorVoltageReserved
+        1 // ProcessorVoltageIndicateLegacy
     },
     0,                     // ExternalClock;
     1820,                  // MaxSpeed;
     0,                     // CurrentSpeed; DVFS-dependent
     0x41,                  // Status;
-    ProcessorUpgradeOther, // ProcessorUpgrade;         ///< The enumeration
-                           // value from PROCESSOR_UPGRADE.
+    ProcessorUpgradeOther, // ProcessorUpgrade
     0,                     // L1CacheHandle;
     0,                     // L2CacheHandle;
     0xFFFF,                // L3CacheHandle;
@@ -45,17 +37,7 @@ SMBIOS_TABLE_TYPE4 mProcessorInfoType4_a53 = {
     4,                     // CoreCount;
     4,                     // EnabledCoreCount;
     4,                     // ThreadCount;
-    0xEC, // ProcessorCharacteristics; ///< The enumeration value from
-          // PROCESSOR_CHARACTERISTIC_FLAGS ProcessorReserved1              :1;
-          // ProcessorUnknown                :1;
-          // Processor64BitCapble            :1;
-          // ProcessorMultiCore              :1;
-          // ProcessorHardwareThread         :1;
-          // ProcessorExecuteProtection      :1;
-          // ProcessorEnhancedVirtualization :1;
-          // ProcessorPowerPerformanceCtrl    :1;
-          // Processor128bitCapble            :1;
-          // ProcessorReserved2               :7;
+    0xEC, // ProcessorCharacteristics
     ProcessorFamilyARM, // ARM Processor Family;
     0,                  // CoreCount2;
     0,                  // EnabledCoreCount2;
@@ -65,43 +47,33 @@ SMBIOS_TABLE_TYPE4 mProcessorInfoType4_a53 = {
 CHAR8 *mProcessorInfoType4Strings[] = {
     "BGA", "Spreadtrum", "Spreadtrum SC9832E", NULL};
 
-/***********************************************************************
-        SMBIOS data definition  TYPE7  Cache Information
-************************************************************************/
 SMBIOS_TABLE_TYPE7 mCacheInfoType7_a53_L1I = {
     {EFI_SMBIOS_TYPE_CACHE_INFORMATION, sizeof(SMBIOS_TABLE_TYPE7), 0},
     1,     // SocketDesignation String
     0x380, // Cache Configuration
-           // Cache Level        :3  (L1)
-           // Cache Socketed     :1  (Not Socketed)
-           // Reserved           :1
-           // Location           :2  (Internal)
-           // Enabled/Disabled   :1  (Enabled)
-           // Operational Mode   :2  (Unknown)
-           // Reserved           :6
     0x0030, // Maximum Size
     0x0030, // Install Size
     {
         // Supported SRAM Type
-        0, // Other             :1
-        1, // Unknown           :1
-        0, // NonBurst          :1
-        0, // Burst             :1
-        0, // PiplelineBurst    :1
-        0, // Synchronous       :1
-        0, // Asynchronous      :1
-        0  // Reserved          :9
+        0, // Other
+        1, // Unknown
+        0, // NonBurst
+        0, // Burst
+        0, // PiplelineBurst
+        0, // Synchronous
+        0, // Asynchronous
+        0 // Reserved
     },
     {
         // Current SRAM Type
-        0, // Other             :1
-        1, // Unknown           :1
-        0, // NonBurst          :1
-        0, // Burst             :1
-        0, // PiplelineBurst    :1
-        0, // Synchronous       :1
-        0, // Asynchronous      :1
-        0  // Reserved          :9
+        0, // Other
+        1, // Unknown
+        0, // NonBurst
+        0, // Burst
+        0, // PiplelineBurst
+        0, // Synchronous
+        0, // Asynchronous
+        0 // Reserved
     },
     0,                     // Cache Speed unknown
     CacheErrorParity,      // Error Correction
@@ -114,36 +86,29 @@ SMBIOS_TABLE_TYPE7 mCacheInfoType7_a53_L1D = {
     {EFI_SMBIOS_TYPE_CACHE_INFORMATION, sizeof(SMBIOS_TABLE_TYPE7), 0},
     2,     // SocketDesignation String
     0x180, // Cache Configuration
-           // Cache Level        :3  (L1)
-           // Cache Socketed     :1  (Not Socketed)
-           // Reserved           :1
-           // Location           :2  (Internal)
-           // Enabled/Disabled   :1  (Enabled)
-           // Operational Mode   :2  (WB)
-           // Reserved           :6
     0x0020, // Maximum Size
     0x0020, // Install Size
     {
         // Supported SRAM Type
-        0, // Other             :1
-        1, // Unknown           :1
-        0, // NonBurst          :1
-        0, // Burst             :1
-        0, // PiplelineBurst    :1
-        0, // Synchronous       :1
-        0, // Asynchronous      :1
-        0  // Reserved          :9
+        0, // Other
+        1, // Unknown
+        0, // NonBurst
+        0, // Burst
+        0, // PiplelineBurst
+        0, // Synchronous
+        0, // Asynchronous
+        0 // Reserved
     },
     {
         // Current SRAM Type
-        0, // Other             :1
-        1, // Unknown           :1
-        0, // NonBurst          :1
-        0, // Burst             :1
-        0, // PiplelineBurst    :1
-        0, // Synchronous       :1
-        0, // Asynchronous      :1
-        0  // Reserved          :9
+        0, // Other
+        1, // Unknown
+        0, // NonBurst
+        0, // Burst
+        0, // PiplelineBurst
+        0, // Synchronous
+        0, // Asynchronous
+        0 // Reserved
     },
     0,                     // Cache Speed unknown
     CacheErrorSingleBit,   // Error Correction
@@ -155,36 +120,29 @@ SMBIOS_TABLE_TYPE7 mCacheInfoType7_a53_L2 = {
     {EFI_SMBIOS_TYPE_CACHE_INFORMATION, sizeof(SMBIOS_TABLE_TYPE7), 0},
     3,      // SocketDesignation String
     0x0181, // Cache Configuration
-            // Cache Level        :3  (L2)
-            // Cache Socketed     :1  (Not Socketed)
-            // Reserved           :1
-            // Location           :2  (Internal)
-            // Enabled/Disabled   :1  (Enabled)
-            // Operational Mode   :2  (WB)
-            // Reserved           :6
     0x0800, // Maximum Size
     0x0800, // Install Size
     {
         // Supported SRAM Type
-        0, // Other             :1
-        1, // Unknown           :1
-        0, // NonBurst          :1
-        0, // Burst             :1
-        0, // PiplelineBurst    :1
-        0, // Synchronous       :1
-        0, // Asynchronous      :1
-        0  // Reserved          :9
+        0, // Other
+        1, // Unknown
+        0, // NonBurst
+        0, // Burst
+        0, // PiplelineBurst
+        0, // Synchronous
+        0, // Asynchronous
+        0 // Reserved
     },
     {
         // Current SRAM Type
-        0, // Other             :1
-        0, // Unknown           :1
-        1, // NonBurst          :1
-        0, // Burst             :1
-        0, // PiplelineBurst    :1
-        0, // Synchronous       :1
-        0, // Asynchronous      :1
-        0  // Reserved          :9
+        0, // Other
+        0, // Unknown
+        1, // NonBurst
+        0, // Burst
+        0, // PiplelineBurst
+        0, // Synchronous
+        0, // Asynchronous
+        0 // Reserved
     },
     0,                      // Cache Speed unknown
     CacheErrorSingleBit,    // Error Correction Multi
@@ -192,42 +150,36 @@ SMBIOS_TABLE_TYPE7 mCacheInfoType7_a53_L2 = {
     CacheAssociativity16Way // Associativity
 };
 
-/***********************************************************************
-        SMBIOS data definition  TYPE17  Memory Device Information
-************************************************************************/
 SMBIOS_TABLE_TYPE17 mMemDevInfoType17 = {
     {EFI_SMBIOS_TYPE_MEMORY_DEVICE, sizeof(SMBIOS_TABLE_TYPE17), 0},
-    0, // MemoryArrayHandle; // Should match SMBIOS_TABLE_TYPE16.Handle,
-       // initialized at runtime, refer to PhyMemArrayInfoUpdateSmbiosType16()
+    0, // MemoryArrayHandle
     0xFFFE, // MemoryErrorInformationHandle; (not provided)
     64,     // TotalWidth; (unknown)
     64,     // DataWidth; (unknown)
     3072,  // Size in MB
-    MemoryFormFactorRowOfChips, // FormFactor;                     ///< The
-                                // enumeration value from MEMORY_FORM_FACTOR.
+    MemoryFormFactorRowOfChips, // FormFactor
     0,                          // DeviceSet;
     1,                          // DeviceLocator String
     2,                          // BankLocator String
-    MemoryTypeLpddr4, // MemoryType;                     ///< The enumeration
-                      // value from MEMORY_DEVICE_TYPE.
+    MemoryTypeLpddr4, // MemoryType
     {
         // TypeDetail;
-        0, // Reserved        :1;
-        0, // Other           :1;
-        0, // Unknown         :1;
-        0, // FastPaged       :1;
-        0, // StaticColumn    :1;
-        0, // PseudoStatic    :1;
-        0, // Rambus          :1;
-        0, // Synchronous     :1;
-        0, // Cmos            :1;
-        0, // Edo             :1;
-        0, // WindowDram      :1;
-        0, // CacheDram       :1;
-        0, // Nonvolatile     :1;
-        0, // Registered      :1;
-        1, // Unbuffered      :1;
-        0, // Reserved1       :1;
+        0, // Reserved
+        0, // Other
+        0, // Unknown
+        0, // FastPaged
+        0, // StaticColumn
+        0, // PseudoStatic
+        0, // Rambus
+        0, // Synchronous
+        0, // Cmos
+        0, // Edo
+        0, // WindowDram
+        0, // CacheDram
+        0, // Nonvolatile
+        0, // Registered
+        1, // Unbuffered
+        0, // Reserved1
     },
     1866,                 // Speed; (unknown)
     2,                    // Manufacturer String
@@ -240,19 +192,18 @@ SMBIOS_TABLE_TYPE17 mMemDevInfoType17 = {
     0,                    // MinimumVoltage; (unknown)
     0,                    // MaximumVoltage; (unknown)
     0,                    // ConfiguredVoltage; (unknown)
-    MemoryTechnologyDram, // MemoryTechnology                 ///< The
-                          // enumeration value from MEMORY_DEVICE_TECHNOLOGY
+    MemoryTechnologyDram, // MemoryTechnology
     {{
         // MemoryOperatingModeCapability
-        0, // Reserved                        :1;
-        0, // Other                           :1;
-        0, // Unknown                         :1;
-        1, // VolatileMemory                  :1;
-        0, // ByteAccessiblePersistentMemory  :1;
-        0, // BlockAccessiblePersistentMemory :1;
-        0  // Reserved                        :10;
+        0, // Reserved
+        0, // Other
+        0, // Unknown
+        1, // VolatileMemory
+        0, // ByteAccessiblePersistentMemory
+        0, // BlockAccessiblePersistentMemory
+        0 // Reserved
     }},
-    0,                     // FirwareVersion
+    0,                     // FirmwareVersion
     0,                     // ModuleManufacturerID (unknown)
     0,                     // ModuleProductID (unknown)
     0,                     // MemorySubsystemControllerManufacturerID (unknown)
@@ -260,8 +211,7 @@ SMBIOS_TABLE_TYPE17 mMemDevInfoType17 = {
     0,                     // NonVolatileSize
     0xC0000000ULL,         // VolatileSize
     0,                     // CacheSize
-    0,                     // LogicalSize (since MemoryType is not
-                           // MemoryTypeLogicalNonVolatileDevice)
+    0,                     // LogicalSize
     0,                     // ExtendedSpeed,
     0                      // ExtendedConfiguredMemorySpeed
 };
@@ -272,7 +222,6 @@ VOID RegisterSOCSmbiosInfo(
 	EFI_SMBIOS_HANDLE Type16
 ){
   EFI_SMBIOS_HANDLE SmbiosHandle;
-  // TYPE7 Cache Information
   LogSmbiosData(
       (EFI_SMBIOS_TABLE_HEADER *)&mCacheInfoType7_a53_L1I,
       mCacheInfoType7Strings, NULL);
@@ -287,12 +236,10 @@ VOID RegisterSOCSmbiosInfo(
       mCacheInfoType7Strings, &SmbiosHandle);
   mProcessorInfoType4_a53.L2CacheHandle = (UINT16)SmbiosHandle;
 
-  // TYPE4 Processor Information
   LogSmbiosData(
       (EFI_SMBIOS_TABLE_HEADER *)&mProcessorInfoType4_a53,
       mProcessorInfoType4Strings, NULL);
 
-  // TYPE17 Memory Device Information
   mMemDevInfoType17.MemoryArrayHandle    = Type16;
   LogSmbiosData(
       (EFI_SMBIOS_TABLE_HEADER *)&mMemDevInfoType17, mMemDevInfoType17Strings,

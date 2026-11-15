@@ -26,6 +26,7 @@
   ArmPkg/ArmPkg.dec
   MdePkg/MdePkg.dec
   Silicon/Spreadtrum/SprdPkg/SprdPkg.dec
+  Silicon/Spreadtrum/sc9832e/sc9832e.dec
 
 [LibraryClasses]
   BaseLib
@@ -41,6 +42,7 @@
   gSprdDisplayReadyProtocolGuid   ## PRODUCES
 
 [FixedPcd]
+  gsc9832ePkgTokenSpaceGuid.PcdAonApbBaseAddress
   gArmTokenSpaceGuid.PcdSystemMemoryBase
   gSprdTokenSpaceGuid.PcdMipiFrameBufferAddress
   gSprdTokenSpaceGuid.PcdMipiFrameBufferWidth

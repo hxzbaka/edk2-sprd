@@ -11,3 +11,8 @@
   gsc9832ePkgTokenSpaceGuid        = { 0x32cba3d5, 0x05df, 0x4f84, {0x93, 0x5d, 0x9a, 0x61, 0x8a, 0xf5, 0x5a, 0x79 } }
 
 [PcdsFixedAtBuild.common]
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank0BaseAddress|0x0|UINT32|0x00000001
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank1BaseAddress|0x0|UINT32|0x00000002
+  gsc9832ePkgTokenSpaceGuid.PcdEicBank2BaseAddress|0x0|UINT32|0x00000003
+  gsc9832ePkgTokenSpaceGuid.PcdAdiBaseAddress|0x0|UINT32|0x00000004
+  gsc9832ePkgTokenSpaceGuid.PcdAonApbBaseAddress|0x0|UINT32|0x00000005

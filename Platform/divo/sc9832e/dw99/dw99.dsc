@@ -59,6 +59,7 @@
   gSprdTokenSpaceGuid.PcdApAhbBaseAddress|0x20E00000
   gSprdTokenSpaceGuid.PcdApClkBaseAddress|0x21500000
   gSprdTokenSpaceGuid.PcdPmuApbBaseAddress|0x402B0000
+  gsc9832ePkgTokenSpaceGuid.PcdAonApbBaseAddress|0x402E0000
   gSprdTokenSpaceGuid.PcdReconfigureDisplay|TRUE
 
   gEfiMdeModulePkgTokenSpaceGuid.PcdSdMmcPciHostControllerMmioBase|0x20600000
@@ -73,7 +74,7 @@
 
 [LibraryClasses.common]
 !if $(USE_UART) != 1
-  SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.inf
+  SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/DxeFrameBufferSerialPortLib.inf
 !endif
   PlatformMemoryMapLib|Platform/divo/sc9832e/dw99/Library/PlatformMemoryMapLib/PlatformMemoryMapLib.inf
   SOCSmbiosInfoLib|Platform/divo/sc9832e/dw99/Library/SOCSmbiosInfoLib/SOCSmbiosInfoLib.inf
@@ -93,7 +94,7 @@
 !if $(NO_EXCEPTION_DISPLAY) != TRUE
   ArmPkg/Drivers/CpuDxe/CpuDxe.inf {
     <LibraryClasses>
-      SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.inf
+      SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/DxeFrameBufferSerialPortLib.inf
   }
 !endif
 !endif

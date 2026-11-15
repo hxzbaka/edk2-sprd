@@ -18,10 +18,11 @@
 #include <Library/DebugLib.h>
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
+#include <Library/PcdLib.h>
 
-#define SDHCI_BASE                      0x20600000
-#define AP_CLK_BASE                     0x21500000
-#define AP_AHB_GATE_BASE                0x20E00000
+#define SDHCI_BASE                      FixedPcdGet32(PcdSdMmcPciHostControllerMmioBase)
+#define AP_CLK_BASE                     FixedPcdGet32(PcdApClkBaseAddress)
+#define AP_AHB_GATE_BASE                FixedPcdGet32(PcdApAhbBaseAddress)
 
 #define AP_CLK_EMMC_2X_CFG             0x90
 #define AP_AHB_EMMC_EB_OFFSET          0x00
