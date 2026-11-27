@@ -1,0 +1,40 @@
+[Defines]
+  INF_VERSION = 0x00010019
+  BASE_NAME = UniXNUDxe
+  FILE_GUID = 29B950CF-586D-49EA-9D71-F88645CCDAF6
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT = UniXNUDxeEntry
+
+[Sources]
+  UniXNUDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Common/XNUBootstrap/XNUBootstrap.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  DevicePathLib
+  MemoryAllocationLib
+  PcdLib
+  PrintLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiLib
+  UefiRuntimeServicesTableLib
+
+[Guids]
+  gEfiGlobalVariableGuid
+
+[Protocols]
+  gEfiFirmwareVolume2ProtocolGuid
+  gEfiLoadedImageProtocolGuid
+
+[Pcd]
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUApplicationFile
+
+[Depex]
+  gEfiVariableArchProtocolGuid AND gEfiVariableWriteArchProtocolGuid

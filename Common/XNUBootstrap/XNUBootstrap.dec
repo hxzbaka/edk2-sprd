@@ -1,0 +1,29 @@
+[Defines]
+  DEC_SPECIFICATION = 0x00010019
+  PACKAGE_NAME = XNUBootstrap
+  PACKAGE_GUID = E2C7EB96-33AF-4BCD-BA70-26A6BAB3719D
+  PACKAGE_VERSION = 0.1
+
+[Includes]
+  Include
+
+[LibraryClasses]
+  UniXNULib|Include/Library/UniXNULib.h
+
+[Guids]
+  gUniXNUPkgTokenSpaceGuid = { 0x13c7e6d7, 0x043c, 0x475b, { 0xba, 0x77, 0x0e, 0x79, 0xd5, 0xad, 0x88, 0x98 } }
+
+[Protocols]
+  gUniXNULoaderProtocolGuid = { 0x0f0a492e, 0x5a6a, 0x49f6, { 0xa1, 0xbf, 0x74, 0x3c, 0x87, 0xab, 0x1c, 0xfe } }
+
+[PcdsFixedAtBuild]
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUDebugLevel|0x00000040|UINT32|0x00000001
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUConfigPath|L"\\EFI\\UniXNU\\unixnu.toml"|VOID*|0x00000002
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUApplicationFile|{ GUID("9B665204-A133-47A2-9396-9E2B370A4E25") }|VOID*|0x00000003
+  gUniXNUPkgTokenSpaceGuid.PcdXnuCommandLineSize|1024|UINT32|0x00000004
+  gUniXNUPkgTokenSpaceGuid.PcdXnuDefaultWindowSize|0x10000000|UINT64|0x00000005
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMinWindowSize|0x10000000|UINT64|0x00000006
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMaxWindowSize|0x200000000|UINT64|0x00000007
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMaxKernelSize|0x10000000|UINT64|0x00000008
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUFallbackFile|{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }|VOID*|0x00000009
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUFallbackTitle|L"Firmware application"|VOID*|0x0000000A

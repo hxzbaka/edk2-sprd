@@ -1,0 +1,54 @@
+[Defines]
+  INF_VERSION = 0x00010019
+  BASE_NAME = UniXNULib
+  FILE_GUID = 2EA3E316-7EC4-4867-9FEA-ABE1D4E9DBA6
+  MODULE_TYPE = UEFI_DRIVER
+  VERSION_STRING = 0.1
+  LIBRARY_CLASS = UniXNULib|UEFI_APPLICATION
+
+[Sources]
+  Internal.h
+  Boot.c
+  Config.c
+  Font.c
+  Logo.c
+  Main.c
+  Menu.c
+  Toml.c
+  Ui.c
+  Volume.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Common/XNUBootstrap/XNUBootstrap.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  DevicePathLib
+  MemoryAllocationLib
+  PcdLib
+  PrintLib
+  UefiBootServicesTableLib
+  UefiLib
+  UefiRuntimeServicesTableLib
+
+[Guids]
+  gEfiFileInfoGuid
+
+[Protocols]
+  gEfiDevicePathProtocolGuid
+  gEfiFirmwareVolume2ProtocolGuid
+  gEfiGraphicsOutputProtocolGuid
+  gEfiLoadedImageProtocolGuid
+  gEfiSerialIoProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiSimpleTextInProtocolGuid
+  gUniXNULoaderProtocolGuid
+
+[Pcd]
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUDebugLevel
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUConfigPath
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUFallbackFile
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUFallbackTitle

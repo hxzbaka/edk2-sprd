@@ -1,0 +1,52 @@
+[Defines]
+  INF_VERSION = 0x00010019
+  BASE_NAME = DarwinBoot
+  FILE_GUID = 1B64AF87-8415-4B57-9B16-680D70913B9F
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT = DarwinBootEntry
+
+[Sources]
+  DarwinBoot.c
+  PackedRamdisk.h
+  BootArgs.h
+  BootVideo.h
+  DiagFont.h
+  WindowSize.h
+  Entry.S
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  Common/XNUBootstrap/XNUBootstrap.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  PcdLib
+  RngLib
+  PrintLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiLib
+
+[Protocols]
+  gUniXNULoaderProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiLoadedImageProtocolGuid
+  gEfiGraphicsOutputProtocolGuid
+
+[Guids]
+  gEfiFileInfoGuid
+
+[FixedPcd]
+  gUniXNUPkgTokenSpaceGuid.PcdXnuCommandLineSize
+  gUniXNUPkgTokenSpaceGuid.PcdXnuDefaultWindowSize
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMinWindowSize
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMaxWindowSize
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMaxKernelSize
+
+[Depex]
+  TRUE
