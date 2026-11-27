@@ -17,13 +17,13 @@ jobs:
   build:
     name: Zip installer Build
     # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       max-parallel: 8
       matrix:
         device:
-          - rt
+          - dw99
           - t610yp
           - s16b
 
@@ -37,7 +37,7 @@ jobs:
       - name: Install requires packages
         run: |
           sudo apt-get update
-          sudo apt install build-essential uuid-dev iasl git nasm python-is-python3 gettext gcc-aarch64-linux-gnu clang llvm device-tree-compiler
+          sudo apt install -y build-essential uuid-dev iasl git nasm python-is-python3 gettext gcc-aarch64-linux-gnu clang llvm device-tree-compiler
 
       - name: Build device ${{ matrix.device }}
         run: |
