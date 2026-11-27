@@ -153,3 +153,4 @@
   gSprdTokenSpaceGuid.PcdDisplaySwitchToVideoMode|FALSE|BOOLEAN|0x0000a430
   gSprdTokenSpaceGuid.PcdDpuCfg0Reg|0x0008|UINT32|0x0000a431
   gSprdTokenSpaceGuid.PcdDisplayVideoModeType|2|UINT8|0x0000a432
+  gSprdTokenSpaceGuid.PcdPanelAvddGpio|0|UINT32|0x0000a433
