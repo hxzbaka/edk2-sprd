@@ -1,0 +1,44 @@
+## SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x00010019
+  BASE_NAME = DarwinPanicRecoveryDxe
+  FILE_GUID = 6C57C054-F5EA-431E-98F4-8C21FFDE2DA9
+  MODULE_TYPE = DXE_DRIVER
+  ENTRY_POINT = DarwinPanicRecoveryEntry
+
+[Sources]
+  DarwinPanicRecoveryDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  Silicon/Spreadtrum/sc9832e/sc9832e.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  UefiLib
+  BaseLib
+  ArmLib
+  BaseMemoryLib
+  CacheMaintenanceLib
+  DebugLib
+  MemoryAllocationLib
+  PcdLib
+
+[Protocols]
+  gEfiBlockIoProtocolGuid
+  gEfiPartitionInfoProtocolGuid
+
+[Guids]
+  gEfiEventReadyToBootGuid
+
+[FixedPcd]
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsBase
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsSize
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsRecordSize
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogPartitionName
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogOffset
+
+[Depex]
+  TRUE

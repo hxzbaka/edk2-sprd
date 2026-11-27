@@ -16,3 +16,8 @@
   gsc9832ePkgTokenSpaceGuid.PcdEicBank2BaseAddress|0x0|UINT32|0x00000003
   gsc9832ePkgTokenSpaceGuid.PcdAdiBaseAddress|0x0|UINT32|0x00000004
   gsc9832ePkgTokenSpaceGuid.PcdAonApbBaseAddress|0x0|UINT32|0x00000005
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsBase|0x0|UINT64|0x00000006
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsSize|0x0|UINT32|0x00000007
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsRecordSize|0x0|UINT32|0x00000008
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogPartitionName|L""|VOID*|0x00000009
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogOffset|0x0|UINT64|0x0000000A

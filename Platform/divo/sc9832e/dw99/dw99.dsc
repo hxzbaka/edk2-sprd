@@ -19,6 +19,22 @@
   GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_SIMPLE_INIT
 
 [PcdsFixedAtBuild.common]
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsBase|0x8845A800
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsSize|0x40000
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinRamoopsRecordSize|0x8000
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogPartitionName|L"misc"
+  gsc9832ePkgTokenSpaceGuid.PcdDarwinPanicLogOffset|0x200
+  gUniXNUPkgTokenSpaceGuid.PcdXnuDefaultWindowSize|0x10000000
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMaxKernelSize|0x10000000
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMinWindowSize|0x10000000
+  gUniXNUPkgTokenSpaceGuid.PcdXnuMaxWindowSize|0x200000000
+  gUniXNUPkgTokenSpaceGuid.PcdXnuCommandLineSize|256
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUFallbackFile|{ GUID("6D77B2BB-69EB-42AB-BECF-4F40C89568C3") }
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUFallbackTitle|L"SimpleInit"
+!if $(USE_UART) != 1
+  gUniXNUPkgTokenSpaceGuid.PcdUniXNUDebugLevel|0x00400000
+!endif
+
   gArmTokenSpaceGuid.PcdSystemMemorySize|0xC0000000
   gSprdTokenSpaceGuid.PcdUefiMemPoolBase|0xC0000000
   gSprdTokenSpaceGuid.PcdUefiMemPoolSize|0x2DEF0000
@@ -73,6 +89,7 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdConOutRow|0
 
 [LibraryClasses.common]
+  UniXNULib|Common/XNUBootstrap/Library/UniXNULib/UniXNULib.inf
 !if $(USE_UART) != 1
   SerialPortLib|Platform/divo/sc9832e/dw99/Library/FrameBufferSerialPortLib/DxeFrameBufferSerialPortLib.inf
 !endif
@@ -81,6 +98,13 @@
   SprdDisplayPanelLib|Platform/divo/sc9832e/dw99/Library/Dw99DisplayPanelLib/Dw99DisplayPanelLib.inf
 
 [Components.common]
+  Platform/divo/sc9832e/dw99/Drivers/DarwinPanicRecoveryDxe/DarwinPanicRecoveryDxe.inf
+  Common/XNUBootstrap/Application/UniXNU.inf
+  Common/XNUBootstrap/Driver/UniXNUDxe/UniXNUDxe.inf
+  Common/XNUBootstrap/Driver/DarwinBoot/DarwinBoot.inf {
+    <LibraryClasses>
+      RngLib|MdePkg/Library/BaseRngLibTimerLib/BaseRngLibTimerLib.inf
+  }
   Platform/divo/sc9832e/dw99/Drivers/SimpleFbDxe/SimpleFbDxe.inf
   Platform/divo/sc9832e/dw99/Drivers/SprdDisplayDxe/SprdDisplayDxe.inf
   Silicon/Spreadtrum/uws6152/Drivers/GraphicsConsoleDxe/GraphicsConsoleDxe.inf

@@ -1,0 +1,36 @@
+version = 1
+
+[boot]
+timeout = -1
+default = "simple-init"
+
+[ui]
+title = "DW99"
+console = "graphics"
+layout = "portrait"
+scale = 1
+
+[[entry]]
+id = "simple-init"
+title = "SimpleInit"
+type = "efi"
+path = "fv:6D77B2BB-69EB-42AB-BECF-4F40C89568C3"
+
+[[entry]]
+id = "xnu"
+title = "watchOS 8.8.1 (ARMv7k)"
+type = "xnu"
+path = "Payloads/kernel.macho"
+args = "-v cpus=1 io=0x4 kextlog=0x44037 user_crash_log=watchdogd,Carousel,backboardd,mediaserverd,identityservicesd"
+
+[[entry]]
+id = "shell"
+title = "UEFI Shell"
+type = "efi"
+path = "fv:7C04A583-9E3E-4F1C-AD65-E05268D0B4D1"
+
+[[entry]]
+id = "exit"
+title = "Return to firmware"
+type = "action"
+action = "exit"
