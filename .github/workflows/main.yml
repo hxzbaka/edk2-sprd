@@ -6,7 +6,7 @@ name: Build Image
 # events but only for the main branch
 on:
   push:
-    branches: [main]
+    branches: [main, UniXNU]
   pull_request:
     branches: [main]
   workflow_dispatch:
